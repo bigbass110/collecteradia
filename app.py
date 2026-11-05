@@ -22,10 +22,52 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import sys
+
 import pandas as pd
 import streamlit as st
 
-from collecte import VERSION_APP
+# ── Chargement du paquet « collecte », quelle que soit la façon dont le dépôt a été envoyé ──
+#   1. normal : collecte/ à côté de app.py
+#   2. dossier envoyé ailleurs : collecte/ dans un sous-dossier du dépôt
+#   3. fichiers envoyés « à plat » : audio.py, texte.py... à côté de app.py (envoi par le site GitHub)
+_RACINE = Path(__file__).resolve().parent
+_MODULES = ("audio.py", "etiquetage.py", "importation.py", "jeux.py", "stockage.py", "texte.py", "travail.py")
+
+
+def _charger_paquet_collecte() -> str:
+    import types
+    sys.path.insert(0, str(_RACINE))
+    if all((_RACINE / "collecte" / m).exists() for m in _MODULES):
+        if not (_RACINE / "collecte" / "__init__.py").exists():
+            paquet = types.ModuleType("collecte")
+            paquet.__path__ = [str(_RACINE / "collecte")]
+            paquet.VERSION_APP = "2.0.0"
+            sys.modules["collecte"] = paquet
+        return "collecte/"
+    for init in sorted(_RACINE.glob("*/collecte/__init__.py")) + sorted(_RACINE.glob("*/*/collecte/__init__.py")):
+        if all((init.parent / m).exists() for m in _MODULES):
+            sys.path.insert(0, str(init.parent.parent))
+            return str(init.parent.relative_to(_RACINE)) + "/"
+    if all((_RACINE / m).exists() for m in _MODULES):
+        paquet = types.ModuleType("collecte")
+        paquet.__path__ = [str(_RACINE)]
+        paquet.VERSION_APP = "2.0.0"
+        sys.modules["collecte"] = paquet
+        return "racine (à plat)"
+    return ""
+
+
+if not _charger_paquet_collecte():
+    _presents = sorted(p.name for p in _RACINE.iterdir() if not p.name.startswith("."))
+    _manquants = [m for m in _MODULES if not (_RACINE / "collecte" / m).exists() and not (_RACINE / m).exists()]
+    st.error("Les fichiers du dossier **collecte** sont introuvables dans le dépôt GitHub. "
+             f"Fichiers manquants : {', '.join(_manquants) or 'aucun, mais mal placés'}. "
+             "Envoyez le dossier collecte complet à côté de app.py (voir LISEZMOI.md), puis redémarrez.")
+    st.caption("Contenu actuel du dépôt, à côté de app.py : " + ", ".join(_presents))
+    st.stop()
+
+from collecte import VERSION_APP  # noqa: E402
 from collecte import audio as A
 from collecte import importation as I
 from collecte import jeux as J
