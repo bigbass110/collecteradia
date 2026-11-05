@@ -35,7 +35,8 @@ _RACINE = Path(__file__).resolve().parent
 _MODULES = ("audio.py", "etiquetage.py", "importation.py", "jeux.py", "stockage.py", "texte.py", "travail.py")
 
 
-def _charger_paquet_collecte() -> str:
+def _charger_paquet_collecte():
+    """Renvoie le dossier du projet (celui qui contient collecte/, phrases.csv...), ou None."""
     import types
     sys.path.insert(0, str(_RACINE))
     if all((_RACINE / "collecte" / m).exists() for m in _MODULES):
@@ -44,21 +45,22 @@ def _charger_paquet_collecte() -> str:
             paquet.__path__ = [str(_RACINE / "collecte")]
             paquet.VERSION_APP = "2.0.0"
             sys.modules["collecte"] = paquet
-        return "collecte/"
+        return _RACINE
     for init in sorted(_RACINE.glob("*/collecte/__init__.py")) + sorted(_RACINE.glob("*/*/collecte/__init__.py")):
         if all((init.parent / m).exists() for m in _MODULES):
             sys.path.insert(0, str(init.parent.parent))
-            return str(init.parent.relative_to(_RACINE)) + "/"
+            return init.parent.parent
     if all((_RACINE / m).exists() for m in _MODULES):
         paquet = types.ModuleType("collecte")
         paquet.__path__ = [str(_RACINE)]
         paquet.VERSION_APP = "2.0.0"
         sys.modules["collecte"] = paquet
-        return "racine (à plat)"
-    return ""
+        return _RACINE
+    return None
 
 
-if not _charger_paquet_collecte():
+_PROJET = _charger_paquet_collecte()
+if _PROJET is None:
     _presents = sorted(p.name for p in _RACINE.iterdir() if not p.name.startswith("."))
     _manquants = [m for m in _MODULES if not (_RACINE / "collecte" / m).exists() and not (_RACINE / m).exists()]
     st.error("Les fichiers du dossier **collecte** sont introuvables dans le dépôt GitHub. "
@@ -75,7 +77,7 @@ from collecte import travail as TR
 from collecte import texte as T
 from collecte.stockage import StockageLocal, StockageR2, ecrire_json, lire_json
 
-BASE = Path(__file__).parent
+BASE = _PROJET   # dossier contenant phrases.csv, lexique.csv (et donnees/ en mode local)
 VERSION_CONSENTEMENT = "v3"
 FORMAT_CODE = re.compile(r"^dr\d{2}$")
 MICROS = ["Micro de dictée", "Casque avec micro", "Micro intégré de l'ordinateur", "Téléphone", "Autre"]
