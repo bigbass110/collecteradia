@@ -1,0 +1,97 @@
+"""Couverture du lexique, statut de validation et instantanés versionnés des manifestes."""
+import json
+from collections import defaultdict
+from datetime import datetime, timezone
+
+from . import VERSION_APP
+from .stockage import ecrire_json, lire_json
+from .texte import ensemble_de, termes_de
+
+CLE_RESULTATS = "validations/resultats.json"     # écrit par scripts/valider_enregistrements.py
+CLE_DECISIONS = "validations/decisions.json"     # écrit par le coordinateur (onglet À vérifier)
+ENSEMBLES = ["train", "val", "test_voix_connues", "test_voix_nouvelles", "test_comptes_rendus", "test_historique"]
+
+
+def couverture(journal: list, lexique: list) -> dict:
+    """terme -> nombre de voix distinctes l'ayant prononcé."""
+    voix = defaultdict(set)
+    for j in journal:
+        for t in termes_de(j.get("texte_final", ""), lexique):
+            voix[t].add(j["code"])
+    return {t: len(v) for t, v in voix.items()}
+
+
+def statut(fichier: str, resultats: dict, decisions: dict) -> str:
+    """'valide_humain', 'rejete', 'a_verifier', 'ok' (validé automatiquement) ou 'non_valide'."""
+    if fichier in decisions:
+        return decisions[fichier]["statut"]
+    if fichier in resultats:
+        return resultats[fichier]["statut"]
+    return "non_valide"
+
+
+def destination(entree: dict, test_locuteurs: set) -> str:
+    """Les segments d'une même dictée réelle (même « groupe ») vont toujours dans le même ensemble."""
+    if entree.get("type") == "compte_rendu":
+        return "test_comptes_rendus"
+    if entree.get("type") == "dictee_reelle":
+        groupe = entree.get("groupe", entree["id_phrase"])
+        if entree["code"] in test_locuteurs or ensemble_de(groupe) == "test":
+            return "test_historique"
+        return ensemble_de(groupe)
+    if entree["code"] in test_locuteurs:
+        return "test_voix_nouvelles"
+    e = ensemble_de(entree["id_phrase"])
+    return "test_voix_connues" if e == "test" else e
+
+
+def creer_instantane(stockage, journal: list, test_locuteurs: set, version_banque: str,
+                     exiger_validation: bool) -> dict:
+    """Écrit manifestes/<horodatage>/<ensemble>.json + resume.json, et met à jour
+    manifestes/dernier.json. Les instantanés ne sont jamais modifiés ensuite."""
+    resultats = lire_json(stockage, CLE_RESULTATS, {})
+    decisions = lire_json(stockage, CLE_DECISIONS, {})
+    nom = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
+    contenu = {e: [] for e in ENSEMBLES}
+    exclus = defaultdict(int)
+
+    for j in journal:
+        s = statut(j["fichier"], resultats, decisions)
+        if s in ("rejete", "a_verifier") or (exiger_validation and s == "non_valide"):
+            exclus[s] += 1
+            continue
+        dest = destination(j, test_locuteurs)
+        if dest == "test_historique" and s != "valide_humain":
+            # un jeu de test doit être une vérité vérifiée : seuls les segments relus entrent
+            exclus["test_historique_a_relire"] += 1
+            continue
+        contenu[dest].append({
+            "audio_filepath": j["fichier"], "duration": float(j["duree_s"]),
+            "text": j["texte_final"], "code": j["code"], "id_phrase": j["id_phrase"],
+            "type": j.get("type", "phrase"), "source": j.get("source", "lecture"),
+            "micro": j.get("micro", ""), "lieu": j.get("lieu", ""),
+        })
+
+    resume = {
+        "instantane": nom, "cree_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "version_app": VERSION_APP, "version_banque": version_banque,
+        "exiger_validation": exiger_validation, "test_locuteurs": sorted(test_locuteurs),
+        "exclus": dict(exclus), "ensembles": {},
+    }
+    for e, lignes in contenu.items():
+        stockage.ecrire(f"manifestes/{nom}/{e}.json",
+                        "".join(json.dumps(l, ensure_ascii=False) + "\n" for l in lignes).encode("utf-8"))
+        resume["ensembles"][e] = {
+            "enregistrements": len(lignes),
+            "heures": round(sum(l["duration"] for l in lignes) / 3600, 3),
+            "voix": len({l["code"] for l in lignes}),
+            "phrases": len({l["id_phrase"] for l in lignes}),
+        }
+    ecrire_json(stockage, f"manifestes/{nom}/resume.json", resume)
+    ecrire_json(stockage, "manifestes/dernier.json", {"instantane": nom})
+    return resume
+
+
+def lister_instantanes(stockage) -> list:
+    noms = {c.split("/")[1] for c in stockage.lister("manifestes/") if c.count("/") >= 2}
+    return sorted(noms, reverse=True)

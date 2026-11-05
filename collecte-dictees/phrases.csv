@@ -1,0 +1,44 @@
+id,type,modalite,texte
+sen001,phrase,Sénologie,opacité spiculée de 12 millimètres du quadrant supéro-externe du sein gauche point
+sen002,phrase,Sénologie,pas de microcalcification suspecte virgule classification BI-RADS 2 point
+sen003,phrase,Sénologie,kyste simple anéchogène de 8 fois 6 millimètres du sein droit point
+sen004,phrase,Sénologie,nodule hypoéchogène à contours irréguliers classé BI-RADS 4 point à la ligne
+sen005,phrase,Sénologie,absence d'adénopathie axillaire de part et d'autre point
+sen006,phrase,Sénologie,nodule hyperéchogène ovalaire circonscrit de 9 millimètres du sein gauche point
+sen007,phrase,Sénologie,masse spiculée rétro-aréolaire droite de 2,5 centimètres classée BI-RADS 5 point
+neu001,phrase,Neuroradiologie,pas d'hémorragie intracrânienne ni d'effet de masse point
+neu002,phrase,Neuroradiologie,hypodensité cortico-sous-corticale pariétale droite évoquant un AVC ischémique récent point
+neu003,phrase,Neuroradiologie,lésion extra-axiale de la convexité frontale gauche de 25 millimètres point
+neu004,phrase,Neuroradiologie,lésion intra-axiale temporale droite en hypersignal T2 FLAIR point
+neu005,phrase,Neuroradiologie,ligne médiane en place virgule système ventriculaire de taille normale point
+neu006,phrase,Neuroradiologie,hématome sous-dural aigu hémisphérique gauche de 8 millimètres d'épaisseur point
+neu007,phrase,Neuroradiologie,pas d'hématome sus-tentoriel ni sous-tentoriel point
+tho001,phrase,Thorax,plage de verre dépoli du lobe inférieur droit point
+tho002,phrase,Thorax,nodule pulmonaire solide de 6 millimètres du lobe supérieur gauche deux points suivi selon Fleischner point
+tho003,phrase,Thorax,épanchement pleural gauche de faible abondance point
+tho004,phrase,Thorax,pas d'embolie pulmonaire jusqu'aux artères segmentaires point
+tho005,phrase,Thorax,adénomégalie médiastinale de la loge de Barety de 15 millimètres de petit axe point
+tho006,phrase,Thorax,épaississement péribronchovasculaire bilatéral et symétrique point
+tho007,phrase,Thorax,absence de pneumothorax point à la ligne
+abd001,phrase,Abdomen,foie de taille normale sans lésion focale décelable point
+abd002,phrase,Abdomen,lithiase vésiculaire sans signe de cholécystite point
+abd003,phrase,Abdomen,kyste rénal droit Bosniak 2 de 18 millimètres point
+abd004,phrase,Abdomen,dilatation des voies biliaires intra-hépatiques sans obstacle visible point
+abd005,phrase,Abdomen,absence d'épanchement intra-péritonéal point
+abd006,phrase,Abdomen,lésion hépatique du segment 7 hypervascularisée au temps artériel classée LI-RADS 5 point
+abd007,phrase,Abdomen,collection sous-capsulaire splénique de 3,5 centimètres point
+abd008,phrase,Abdomen,pas de dilatation des cavités pyélocalicielles ni à droite ni à gauche point
+abd009,phrase,Abdomen,masse rénale gauche isodense au parenchyme de 4 centimètres point
+ost001,phrase,Ostéo-articulaire,fissure horizontale de la corne postérieure du ménisque interne point
+ost002,phrase,Ostéo-articulaire,ligament croisé antérieur continu virgule pas d'épanchement articulaire point
+ost003,phrase,Ostéo-articulaire,ostéophytose marginale fémoro-tibiale médiale droite point
+ost004,phrase,Ostéo-articulaire,fracture non déplacée de l'extrémité distale du radius gauche point
+ost005,phrase,Ostéo-articulaire,discopathie L4 L5 avec hernie postéro-latérale droite point
+ost006,phrase,Ostéo-articulaire,rupture transfixiante du tendon supra-épineux droit point
+ost007,phrase,Ostéo-articulaire,lyse isthmique bilatérale de L5 avec spondylolisthésis de grade 1 point
+cer001,phrase,Cervical,nodule thyroïdien hypoéchogène lobaire droit de 14 millimètres classé TI-RADS 4 point
+pel001,phrase,Pelvis,lésion de la zone périphérique gauche classée PI-RADS 4 point
+pel002,phrase,Pelvis,utérus de taille normale virgule endomètre fin point
+cr001,compte_rendu,Thorax,scanner thoracique sans injection point à la ligne indication deux points toux chronique point à la ligne résultats deux points absence de nodule pulmonaire suspect point plage de verre dépoli du lobe inférieur droit point pas d'épanchement pleural ni péricardique point pas d'adénomégalie médiastinale point à la ligne conclusion deux points plage de verre dépoli du lobe inférieur droit d'allure infectieuse point contrôle à 6 semaines point
+cr002,compte_rendu,Sénologie,mammographie bilatérale et échographie mammaire point à la ligne seins de densité de type B point à la ligne à droite deux points pas d'anomalie point à la ligne à gauche deux points nodule hypoéchogène à contours irréguliers de 12 fois 9 millimètres du quadrant supéro-externe point pas d'adénopathie axillaire point à la ligne conclusion deux points nodule du sein gauche classé BI-RADS 4 point biopsie recommandée point
+cr003,compte_rendu,Ostéo-articulaire,IRM du genou droit point à la ligne fissure horizontale de la corne postérieure du ménisque interne point ménisque externe normal point ligament croisé antérieur continu virgule ligament croisé postérieur normal point épanchement articulaire de faible abondance point à la ligne conclusion deux points fissure méniscale interne point pas de lésion ligamentaire point

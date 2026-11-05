@@ -1,0 +1,45 @@
+terme,categorie
+BI-RADS,score
+TI-RADS,score
+LI-RADS,score
+PI-RADS,score
+Bosniak,score
+Fleischner,score
+Barety,eponyme
+verre dépoli,terme_rare
+spiculée,terme_rare
+anéchogène,terme_rare
+ostéophytose,terme_rare
+spondylolisthésis,terme_rare
+péribronchovasculaire,terme_rare
+pyélocalicielles,terme_rare
+discopathie,terme_rare
+lyse isthmique,terme_rare
+adénomégalie,terme_rare
+transfixiante,terme_rare
+hypoéchogène,paire_dangereuse
+hyperéchogène,paire_dangereuse
+hypodensité,paire_dangereuse
+isodense,paire_dangereuse
+intra-axiale,paire_dangereuse
+extra-axiale,paire_dangereuse
+sous-capsulaire,paire_dangereuse
+sus-tentoriel,paire_dangereuse
+sous-tentoriel,paire_dangereuse
+hypervascularisée,paire_dangereuse
+pas de,negation
+pas d',negation
+absence de,negation
+absence d',negation
+sans,negation
+ni,negation
+droit,lateralite
+droite,lateralite
+gauche,lateralite
+bilatéral,lateralite
+bilatérale,lateralite
+millimètres,unite
+centimètres,unite
+point à la ligne,commande
+deux points,commande
+virgule,commande
