@@ -193,6 +193,34 @@ python scripts/telecharger_donnees.py /data/radia --fractions 0.25,0.5
 modèle sur les mêmes jeux de test. Tant que l'erreur baisse quand les données augmentent, la
 collecte vaut la peine d'être poursuivie.
 
+## Évaluer un modèle (machine GPU)
+
+**Avant tout ré-entraînement**, mesurez Parakeet de base : c'est le point de départ de tout gain.
+
+```bash
+python scripts/evaluer.py /data/radia/<instantane>                                   # modèle de base
+python scripts/evaluer.py /data/radia/<instantane> \
+    --modele nvidia/parakeet-tdt-0.6b-v3 --modele /modeles/radia_train50.nemo           # comparaison
+```
+
+Pour chaque jeu de test, le script affiche :
+
+| Mesure | Ce qu'elle dit |
+| --- | --- |
+| WER hors commandes | Erreurs de mots, commandes dictées exclues. **La comparaison équitable avec le modèle de base**, qui écrit « , » au lieu de « virgule » |
+| WER | Erreurs de mots, commandes comprises : ce que le formatage vocal de RadIA recevra |
+| Commandes (rappel, précision) | Commandes dictées retrouvées ; commandes écrites à tort |
+| Négation, latéralité, nombres | Énoncés où l'une d'elles diffère de la référence. **Les erreurs qui comptent cliniquement** |
+| Termes du lexique | Taux de termes retrouvés par catégorie, et les termes les plus manqués |
+
+Entre crochets : l'intervalle de confiance à 95 %, calculé par voix (lectures) ou par dictée (dictées
+réelles). Pour un second modèle, la ligne « écart avec la référence » donne la différence de WER avec
+le premier : **si son intervalle ne contient pas 0, l'amélioration est réelle**. Un jeu de moins de
+300 énoncés ou de 5 voix est signalé : ses intervalles sont trop larges pour conclure.
+
+Le rapport complet (`<instantane>/evaluation_<horodatage>.json`) contient la transcription de chaque
+énoncé et ses erreurs critiques : écoutez-les avant de mettre un modèle en service.
+
 ## Banque de textes
 
 - Éditez `phrases.csv` et `lexique.csv`, puis `git push` : GitHub Actions refuse l'envoi si un

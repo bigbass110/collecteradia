@@ -23,12 +23,12 @@ from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RACINE))
+from collecte import evaluation as EV  # noqa: E402
 from collecte import jeux as J  # noqa: E402
 from collecte import texte as T  # noqa: E402
 from collecte.stockage import depuis_environnement, ecrire_json, lire_json  # noqa: E402
 
-NEGATIONS = {"pas", "sans", "aucun", "aucune", "absence", "ni", "non"}
-LATERALITES = {"droit", "droite", "gauche", "bilatéral", "bilatérale", "bilatéraux"}
+NEGATIONS, LATERALITES = EV.NEGATIONS, EV.LATERALITES   # source unique : collecte/evaluation.py
 
 
 def comparer(attendu: str, hypothese: str, seuil: float) -> dict:
