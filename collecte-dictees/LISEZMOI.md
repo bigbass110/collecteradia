@@ -157,6 +157,12 @@ modal deploy gpu/modal_etiquetage.py
 - **Commandes dictées** : vérifiez que Parakeet écrit bien « virgule » ou « point à la ligne » en
   toutes lettres quand ils sont dictés. S'il les remplace par des signes, les segments perdront ces
   commandes : il faudra alors corriger à la relecture ou adapter l'étiquetage.
+  Chaque signe écrit par le moteur (« , » « . ») sans la commande en toutes lettres rend le segment
+  « à vérifier », et leur nombre est noté dans `ponctuation_moteur` (historique/etat/<code>.json).
+  Un mot écrit avec une majuscule en milieu de phrase (nom propre possible) est aussi « à vérifier » :
+  ajoutez les éponymes légitimes au lexique pour ne plus les voir signalés.
+- **Whisper sans vocabulaire** : son invite ne contient que la modalité, pour qu'il confirme les
+  corrections du compte rendu de façon indépendante.
 - **Formats de dictaphone** : DSS est souvent lisible ; DS2 (Philips) ne l'est généralement pas :
   convertissez-le d'abord avec le logiciel du dictaphone.
 - Une dictée en erreur n'arrête pas le lot ; cochez « Retraiter aussi les dictées en erreur » pour

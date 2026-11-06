@@ -126,6 +126,7 @@ def traiter(stockage, transcrire_parakeet, transcrire_whisper, test_locuteurs: s
             ecrire_json(stockage, J.CLE_RESULTATS, resultats)
             etat[ident] = {"statut": "etiquete", "segments": len(res["segments"]), "a_verifier": nb_verif,
                            "exclus_identifiants": res["exclus_identifiants"],
+                           "ponctuation_moteur": res.get("ponctuation_moteur", 0),
                            "concordance": res["concordance"], "maj": maintenant()}
             bilan["segments"] += len(res["segments"])
             bilan["a_verifier"] += nb_verif

@@ -39,6 +39,14 @@ CONCORDANCE_MIN = 0.3
 
 _UNITES = {"mm": "millimètres", "cm": "centimètres", "ml": "millilitres", "mL": "millilitres",
            "UH": "unités Hounsfield", "HU": "unités Hounsfield"}
+_PONCTUATION_FINALE = re.compile(r"([.,;:!?…]+)\W*$")   # « gauche. » ; pas la virgule décimale de « 3,5 »
+_FINS_PHRASE_ECRITES = set(".!?…")
+
+
+def invite_whisper(modalite: str = "") -> str:
+    """Invite de Whisper : le contexte, JAMAIS le vocabulaire du lexique. Si Whisper est poussé à écrire
+    « spiculée », il ne peut plus confirmer indépendamment une correction « spécule » -> « spiculée »."""
+    return f"Compte rendu radiologique{(' en ' + modalite) if modalite else ''}."
 
 
 # ─────────────────────────── Jetons ───────────────────────────
@@ -110,23 +118,35 @@ def _egalites(a: list, b: list) -> dict:
 
 
 def _jetons_mots(mots: list) -> list:
-    """Jetons d'une transcription horodatée : (norme, affichage, debut, fin).
-    Les moteurs écrivent parfois « 12 x 8 mm » : on remet la forme parlée, comme pour le compte rendu."""
-    brut = []
+    """Jetons d'une transcription horodatée : (norme, affichage, debut, fin, ponctuation, debut_phrase).
+    Les moteurs écrivent parfois « 12 x 8 mm » : on remet la forme parlée, comme pour le compte rendu.
+    ponctuation : signe écrit par le moteur juste après ce jeton (« gauche, » -> « , »), sinon "".
+    debut_phrase : premier jeton, ou jeton suivant un « . ! ? » écrit par le moteur (majuscule attendue)."""
+    brut, phrase_finie = [], True
     for m in mots:
-        for norm, aff in jetons(m["mot"], ecrit=True):
-            brut.append((norm, aff, float(m["debut"]), float(m["fin"])))
+        signe = _PONCTUATION_FINALE.search(m["mot"].strip())
+        signe = signe.group(1) if signe else ""
+        morceaux = jetons(m["mot"], ecrit=True)
+        if not morceaux:                       # signe isolé (« , ») : rattaché au jeton précédent
+            if signe and brut:
+                brut[-1][4] += signe
+        for k, (norm, aff) in enumerate(morceaux):
+            brut.append([norm, aff, float(m["debut"]), float(m["fin"]),
+                         signe if k == len(morceaux) - 1 else "", phrase_finie and k == 0])
+        if signe or morceaux:
+            phrase_finie = bool(set(signe) & _FINS_PHRASE_ECRITES) if signe else False
     sortie = []
-    for k, (norm, aff, d, f) in enumerate(brut):
+    for k, (norm, aff, d, f, ponct, debut) in enumerate(brut):
         precedent_chiffre = k > 0 and brut[k - 1][0][:1].isdigit()
         suivant_chiffre = k + 1 < len(brut) and brut[k + 1][0][:1].isdigit()
         if norm in {"x", "×"} and precedent_chiffre and suivant_chiffre:
-            sortie.append(("fois", "fois", d, f))
+            sortie.append(("fois", "fois", d, f, ponct, debut))
         elif aff in _UNITES and precedent_chiffre:
-            for mot in _UNITES[aff].split():
-                sortie.append((mot.lower(), mot, d, f))
+            unite = _UNITES[aff].split()
+            for n, mot in enumerate(unite):
+                sortie.append((mot.lower(), mot, d, f, ponct if n == len(unite) - 1 else "", debut and n == 0))
         else:
-            sortie.append((norm, aff, d, f))
+            sortie.append((norm, aff, d, f, ponct, debut))
     return sortie
 
 
@@ -158,17 +178,33 @@ def _marquer_identifiants(normes: list, noms: set) -> set:
             ident.add(i)
         if n in {"ans", "an"} and i > 0 and normes[i - 1].isdigit():
             ident.update({i - 1, i})
+        if re.fullmatch(r"\d{5,}", n):               # numéro de dossier, IPP, téléphone
+            ident.add(i)
     return ident
 
 
+def _noms_suspects(jp: list, fin_phrase: set, noms_propres: frozenset) -> set:
+    """Mots que le moteur a écrits avec une majuscule en milieu de phrase : probablement un nom propre.
+    Les noms absents de l'en-tête du compte rendu (« vu avec le docteur Ndiaye ») ne sont pas connus
+    de _marquer_identifiants ; ce repérage les rattrape. Sigles, mots à chiffre et éponymes du lexique
+    sont ignorés."""
+    suspects = set()
+    for i, (norm, aff, _, _, _, debut) in enumerate(jp):
+        if (aff[:1].isupper() and not aff.isupper() and not any(c.isdigit() for c in aff)
+                and len(norm) > 1 and norm not in noms_propres and not debut and (i - 1) not in fin_phrase):
+            suspects.add(i)
+    return suspects
+
+
 def etiqueter(mots_p: list, mots_w: list, compte_rendu: str, noms_propres: frozenset = frozenset()) -> dict:
-    """Renvoie {"segments": [...], "concordance": float, "exclus_identifiants": int}."""
+    """Renvoie {"segments": [...], "concordance": float, "exclus_identifiants": int,
+    "ponctuation_moteur": int (signes écrits par le moteur, à surveiller sur les premières dictées)}."""
     jp = _jetons_mots(mots_p)
     jw = _jetons_mots(mots_w)
     jr, noms = preparer_compte_rendu(compte_rendu)
     pn, wn, rn = [j[0] for j in jp], [j[0] for j in jw], [r[0] for r in jr]
     if not jp:
-        return {"segments": [], "concordance": 0.0, "exclus_identifiants": 0}
+        return {"segments": [], "concordance": 0.0, "exclus_identifiants": 0, "ponctuation_moteur": 0}
 
     p_vers_w = _egalites(pn, wn)                  # jetons Parakeet confirmés par Whisper
     r_confirmes_w = set(_egalites(wn, rn).values())   # jetons du compte rendu entendus par Whisper
@@ -219,6 +255,24 @@ def etiqueter(mots_p: list, mots_w: list, compte_rendu: str, noms_propres: froze
                 _inserer(i, jp, pn, commande, p_vers_w, ajouter)
 
     concordance = egaux / len(pn)
+    # Ponctuation écrite par le moteur : le radiologue a peut-être dicté « virgule » ou « point », que le
+    # moteur a remplacé par un signe. Le signe est effacé par jetons() : sans ce contrôle, le segment
+    # serait « ok » avec une commande en moins, et le modèle apprendrait à ignorer les commandes.
+    # Si le moteur a écrit à la fois le signe et la commande (« , virgule »), rien n'est perdu.
+    ponctuation_moteur = 0
+    suspects = _noms_suspects(jp, fin_phrase, noms_propres)
+    for e in elements:
+        raisons = [e["raison"]] if e["raison"] else []
+        for i in e["indices"]:
+            if jp[i][4] and (i + 1) not in commande:
+                ponctuation_moteur += 1
+                raisons.append(f"ponctuation « {jp[i][4]} » écrite par le moteur après « {jp[i][1]} » : "
+                               "commande dictée (virgule, point...) ?")
+            if i in suspects:
+                raisons.append(f"nom propre possible (« {jp[i][1]} ») : exclure s'il s'agit d'une personne ; "
+                               "si c'est un éponyme, l'ajouter au lexique")
+        if len(raisons) > (1 if e["raison"] else 0):
+            e["statut"], e["raison"] = "a_verifier", " ; ".join(raisons)
     for e in elements:
         if set(e["indices"]) & identifiants:
             e["statut"], e["raison"] = "identifiant", "identifiant prononcé"
@@ -227,7 +281,8 @@ def etiqueter(mots_p: list, mots_w: list, compte_rendu: str, noms_propres: froze
         for s in segments:
             s["statut"] = "a_verifier"
             s["raisons"].append(f"compte rendu peut-être mal apparié (concordance {concordance:.0%})")
-    return {"segments": segments, "concordance": round(concordance, 3), "exclus_identifiants": exclus}
+    return {"segments": segments, "concordance": round(concordance, 3), "exclus_identifiants": exclus,
+            "ponctuation_moteur": ponctuation_moteur}
 
 
 def _inserer(i, jp, pn, commande, p_vers_w, ajouter):

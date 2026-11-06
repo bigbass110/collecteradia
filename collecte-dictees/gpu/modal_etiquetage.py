@@ -60,13 +60,13 @@ def etiqueter(id_travail: str, test_locuteurs: list, relancer_erreurs: bool):
     import nemo.collections.asr as nemo_asr
     from faster_whisper import WhisperModel
 
+    from collecte import etiquetage as E
     from collecte import texte as T
     from collecte import travail
     from collecte.stockage import depuis_environnement
 
     lexique = T.lire_lexique(Path("/root/lexique.csv").read_bytes())
     noms = T.noms_propres_du_lexique(lexique)
-    vocabulaire = ", ".join(l["terme"] for l in lexique if l["categorie"] not in {"negation", "lateralite", "commande"})
 
     parakeet = nemo_asr.models.ASRModel.from_pretrained(PARAKEET)
     whisper = WhisperModel(WHISPER, device="cuda", compute_type="float16")
@@ -79,9 +79,10 @@ def etiqueter(id_travail: str, test_locuteurs: list, relancer_erreurs: bool):
         return [{"mot": w["word"], "debut": w["start"], "fin": w["end"]} for w in sortie.timestamp["word"]]
 
     def transcrire_whisper(chemin, modalite):
-        invite = f"Compte rendu radiologique{(' en ' + modalite) if modalite else ''}. {vocabulaire}."
+        # Pas de vocabulaire dans l'invite : Whisper doit rester une source INDÉPENDANTE pour confirmer
+        # les corrections du compte rendu (voir etiquetage.invite_whisper).
         segments, _ = whisper.transcribe(chemin, language="fr", word_timestamps=True,
-                                         vad_filter=True, initial_prompt=invite[:800])
+                                         vad_filter=True, initial_prompt=E.invite_whisper(modalite))
         return [{"mot": w.word, "debut": w.start, "fin": w.end} for s in segments for w in (s.words or [])]
 
     return travail.traiter(depuis_environnement(), transcrire_parakeet, transcrire_whisper,
