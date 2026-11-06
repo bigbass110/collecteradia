@@ -1,0 +1,49 @@
+#!/bin/sh
+# Crochet pre-push : avant chaque « git push », vérifie la banque de textes et lance les tests,
+# comme GitHub Actions, mais sur votre ordinateur. Un échec bloque l'envoi.
+#
+# Installation (une fois par ordinateur, à la racine du dépôt) :
+#     git config core.hooksPath .githooks
+# Contourner exceptionnellement :      git push --no-verify
+# Choisir un autre Python :            export RADIA_PYTHON=/chemin/vers/python3.12
+#
+# Les tests demandent Python 3.10 ou plus et les dépendances du projet :
+#     pip install -r collecte-dictees/requirements.txt pytest jiwer
+# Sans eux, seule la banque de textes est vérifiée (sans dépendance), avec un avertissement.
+
+projet="$(git rev-parse --show-toplevel)/collecte-dictees"
+cd "$projet" || exit 0
+
+py="$RADIA_PYTHON"
+if [ -z "$py" ]; then
+    for candidat in python3.13 python3.12 python3.11 python3.10 python3; do
+        if command -v "$candidat" >/dev/null 2>&1; then py="$candidat"; break; fi
+    done
+fi
+if [ -z "$py" ]; then
+    echo "pre-push : Python introuvable, vérifications ignorées (GitHub Actions les fera)."
+    exit 0
+fi
+
+echo "pre-push : banque de textes (convention d'écriture)..."
+if ! sortie=$("$py" scripts/verifier_phrases.py 2>&1); then
+    echo "$sortie"
+    echo ""
+    echo "pre-push : ENVOI BLOQUÉ, corrigez phrases.csv ou lexique.csv (voir docs/convention-ecriture.md)."
+    exit 1
+fi
+echo "$sortie" | tail -1
+
+if ! "$py" -c "import sys; assert sys.version_info >= (3, 10); import pytest, numpy, soundfile, streamlit, docx, pypdf, jiwer" >/dev/null 2>&1; then
+    echo "pre-push : tests IGNORÉS ($("$py" --version 2>&1)) : il faut Python 3.10 ou plus avec les dépendances"
+    echo "           (pip install -r collecte-dictees/requirements.txt pytest jiwer), ou RADIA_PYTHON."
+    echo "           GitHub Actions lancera les tests après l'envoi."
+    exit 0
+fi
+
+echo "pre-push : tests..."
+if ! "$py" -m pytest -q -x; then
+    echo ""
+    echo "pre-push : ENVOI BLOQUÉ, un test échoue (git push --no-verify pour passer outre)."
+    exit 1
+fi

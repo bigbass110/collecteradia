@@ -130,6 +130,12 @@ def lexique():
 
 
 @st.cache_data
+def problemes_banque() -> list:
+    """Contrôle de phrases.csv et lexique.csv au démarrage : même correcteur que GitHub Actions."""
+    return T.verifier_banque(banque()[0], lexique())
+
+
+@st.cache_data
 def termes_par_id() -> dict:
     return {p["id"]: sorted(T.termes_de(p["texte"], lexique())) for p in banque()[0]}
 
@@ -266,7 +272,8 @@ def ecran_seance(code: str) -> None:
 
 def phrase_courante(code: str, type_: str, modalite: str, deja: set):
     phrases, _ = banque()
-    selection = [p for p in phrases if p["type"] == type_
+    bloques = T.ids_en_erreur(problemes_banque())     # textes hors convention : jamais proposés
+    selection = [p for p in phrases if p["type"] == type_ and p["id"] not in bloques
                  and (modalite == "Toutes" or p["modalite"] == modalite)]
     if code in test_locuteurs() and type_ == "phrase":
         selection = [p for p in selection if T.ensemble_de(p["id"]) == "test"]
@@ -752,6 +759,27 @@ def admin_dictees_reelles() -> None:
                "être relu pour entrer dans test_historique.")
 
 
+def afficher_controle_banque() -> None:
+    problemes = problemes_banque()
+    erreurs = [p for p in problemes if p[0] == "erreur"]
+    avertissements = [p for p in problemes if p[0] != "erreur"]
+    if erreurs:
+        bloques = T.ids_en_erreur(problemes)
+        st.error(f"**Banque de textes : {len(erreurs)} erreur(s) de convention.** "
+                 f"{len(bloques)} texte(s) ne sont plus proposés à la lecture tant que phrases.csv "
+                 "n'est pas corrigé (voir docs/convention-ecriture.md).")
+        with st.expander("Détail des erreurs"):
+            for _, ou, message in erreurs:
+                st.markdown(f"- **{ou}** : {message}")
+    if avertissements:
+        with st.expander(f"Banque de textes : {len(avertissements)} avertissement(s)"):
+            for _, ou, message in avertissements:
+                st.markdown(f"- **{ou}** : {message}")
+    if not problemes:
+        st.caption(f"Banque de textes conforme : {len(banque()[0])} texte(s), {len(lexique())} terme(s) "
+                   f"du lexique, version {banque()[1]}.")
+
+
 def page_administration(ident: dict) -> None:
     st.title("Administration")
     if not ident["admin"]:
@@ -760,6 +788,7 @@ def page_administration(ident: dict) -> None:
     if st.button("Actualiser les données"):
         tous_les_journaux.clear()
     journal = tous_les_journaux()
+    afficher_controle_banque()
     onglets = st.tabs(["Vue d'ensemble", "Couverture", "À vérifier", "Enregistrements",
                        "Dictées réelles", "Jeux de données", "Retrait de consentement"])
     with onglets[4]:

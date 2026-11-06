@@ -166,6 +166,13 @@ def verifier_banque(phrases: list, lexique: list) -> list:
     return pb
 
 
+def ids_en_erreur(problemes: list) -> set:
+    """Identifiants des textes de la banque qui violent la convention (résultat de verifier_banque) :
+    l'application ne les propose pas à la lecture, même si phrases.csv a été modifié sans vérification
+    (par exemple directement sur le site GitHub)."""
+    return {ou for niveau, ou, _ in problemes if niveau == "erreur"}
+
+
 def version_banque(contenu: bytes) -> str:
     return hashlib.sha256(contenu).hexdigest()[:12]
 

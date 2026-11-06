@@ -226,6 +226,13 @@ Le rapport complet (`<instantane>/evaluation_<horodatage>.json`) contient la tra
 - Éditez `phrases.csv` et `lexique.csv`, puis `git push` : GitHub Actions refuse l'envoi si un
   texte viole la convention (unité abrégée, « x », ponctuation, date, civilité...).
 - Vérification locale : `python scripts/verifier_phrases.py`.
+- **Crochet avant envoi** (une fois par ordinateur, à la racine du dépôt) : `git config core.hooksPath .githooks`.
+  Chaque `git push` vérifie alors la banque et lance les tests (Python 3.10 ou plus avec les
+  dépendances ; sinon seule la banque est vérifiée). Un échec bloque l'envoi ; `git push --no-verify`
+  passe outre.
+- **Contrôle dans l'application** : l'onglet Administration affiche les erreurs de convention de la
+  banque, et les textes en erreur ne sont plus proposés à la lecture. Cela couvre aussi les
+  modifications faites directement sur le site GitHub, que le crochet ne voit pas.
 - **Ne réutilisez jamais un identifiant** : la répartition entre entraînement et test en dépend.
 - Un terme du lexique absent de toute phrase est signalé : ajoutez des phrases qui le contiennent.
 - La liste des commandes (`COMMANDES` dans `collecte/texte.py`) doit rester identique à celle du

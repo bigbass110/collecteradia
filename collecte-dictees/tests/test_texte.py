@@ -60,3 +60,11 @@ def test_choix_privilegie_les_termes_peu_couverts():
 def test_sans_commandes_et_surlignage():
     assert T.sans_commandes(T.normaliser("foie normal virgule rate normale point à la ligne")) == "foie normal rate normale"
     assert "<span class='cmd'>point à la ligne</span>" in T.surligner_commandes("foie normal point à la ligne")
+
+
+def test_ids_en_erreur_ne_retient_que_les_erreurs():
+    phrases = [{"id": "ok1", "type": "phrase", "modalite": "Thorax", "texte": "absence de pneumothorax point"},
+               {"id": "ko1", "type": "phrase", "modalite": "Thorax", "texte": "nodule de 12 mm."},
+               {"id": "av1", "type": "phrase", "modalite": "Thorax", "texte": "signe de Couinaud point"}]
+    problemes = T.verifier_banque(phrases, [])
+    assert T.ids_en_erreur(problemes) == {"ko1"}          # « av1 » n'a qu'un avertissement (majuscule)
