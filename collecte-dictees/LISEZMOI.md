@@ -221,6 +221,28 @@ le premier : **si son intervalle ne contient pas 0, l'amélioration est réelle*
 Le rapport complet (`<instantane>/evaluation_<horodatage>.json`) contient la transcription de chaque
 énoncé et ses erreurs critiques : écoutez-les avant de mettre un modèle en service.
 
+## Construire le lexique à partir des erreurs
+
+Le lexique le plus utile n'est pas écrit à la main : ce sont les mots que Parakeet de base manque
+réellement. Après une validation (`valider_enregistrements.py`) ou un étiquetage de dictées réelles :
+
+```bash
+python scripts/construire_lexique.py              # candidats_lexique.csv + bilan affiché
+python scripts/construire_lexique.py --ajouter    # ajoute aussi les candidats à lexique.csv
+```
+
+- Seuls les textes fiables sont utilisés (validés automatiquement ou relus) ; mots outils, nombres et
+  commandes sont ignorés. Un mot est proposé s'il est manqué au moins 2 fois et dans au moins 30 % de
+  ses occurrences (`--min-erreurs`, `--min-taux`).
+- Catégorie proposée : `paire_dangereuse` quand Parakeet écrit un autre mot réel et proche
+  (hypoéchogène ↔ hyperéchogène), sinon `terme_rare`.
+- Le bilan donne aussi le taux d'erreur de chaque terme du lexique actuel : un terme toujours
+  retrouvé n'a plus besoin d'être ciblé.
+- `--ajouter` n'ajoute jamais un mot avec une majuscule (nom de personne possible) : vérifiez-le et
+  ajoutez-le à la main s'il s'agit d'un éponyme. Relisez toujours la liste avant de la commiter.
+- Ensuite : ajoutez des phrases qui contiennent les nouveaux termes (`verifier_phrases.py` signale
+  les termes sans phrase). La sélection intelligente de l'application les proposera en priorité.
+
 ## Banque de textes
 
 - Éditez `phrases.csv` et `lexique.csv`, puis `git push` : GitHub Actions refuse l'envoi si un

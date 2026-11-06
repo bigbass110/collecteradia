@@ -1,0 +1,7 @@
+# Ne jamais versionner : secrets, données de collecte, candidats du lexique (peuvent contenir un nom)
+.streamlit/secrets.toml
+donnees/
+candidats_lexique.csv
+__pycache__/
+.pytest_cache/
+*.tmp
