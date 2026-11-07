@@ -9,8 +9,11 @@ def aller(at, page: str):
     """Ouvre une page de la navigation (adresse : enregistrer, importer, consignes, administration).
     AppTest.switch_page ne connaît que les pages en fichiers : on lui donne directement l'empreinte de
     l'adresse, calculée comme Streamlit le fait pour les pages en fonctions."""
-    from streamlit.util import calc_md5
-    at._page_hash = calc_md5(page)
+    try:                                              # Streamlit 1.5x : calc_md5 ; versions récentes : calc_hash
+        from streamlit.util import calc_hash
+    except ImportError:
+        from streamlit.util import calc_md5 as calc_hash
+    at._page_hash = calc_hash(page)
     return at.run(timeout=60)
 
 
