@@ -26,7 +26,8 @@ sys.path.insert(0, str(RACINE))
 from collecte import evaluation as EV  # noqa: E402
 from collecte import jeux as J  # noqa: E402
 from collecte import texte as T  # noqa: E402
-from collecte.stockage import depuis_environnement, ecrire_json, lire_json  # noqa: E402
+from collecte import travail as TR  # noqa: E402
+from collecte.stockage import depuis_environnement, lire_json  # noqa: E402
 
 NEGATIONS, LATERALITES = EV.NEGATIONS, EV.LATERALITES   # source unique : collecte/evaluation.py
 
@@ -63,9 +64,27 @@ def valider(stockage, transcrire, nom_modele: str, seuil: float, tout: bool = Fa
     for cle in stockage.lister("journaux/"):
         if cle.endswith(".json"):
             journal += lire_json(stockage, cle, [])
+    if TR.travail_en_cours(stockage):
+        sys.exit("Un étiquetage GPU est en cours : relancez la validation quand il sera terminé "
+                 "(Administration → « Dictées réelles »).")
+    if J.validation_en_cours(stockage):
+        sys.exit(f"Une autre validation semble en cours. Si ce n'est pas le cas (programme interrompu), "
+                 f"supprimez {J.CLE_VALIDATION_EN_COURS} ou attendez 20 minutes.")
     resultats = lire_json(stockage, J.CLE_RESULTATS, {})
     a_traiter = [j for j in journal if tout or j["fichier"] not in resultats]
     print(f"{len(a_traiter)} enregistrement(s) à valider sur {len(journal)}.")
+    J.marquer_validation(stockage, True)
+    try:
+        _valider_par_lots(stockage, transcrire, nom_modele, seuil, a_traiter, lot)
+    finally:
+        J.marquer_validation(stockage, False)
+    resultats = lire_json(stockage, J.CLE_RESULTATS, {})
+    a_verifier = sum(1 for r in resultats.values() if r["statut"] == "a_verifier")
+    print(f"Terminé : {a_verifier} enregistrement(s) à vérifier dans l'application.")
+    return resultats
+
+
+def _valider_par_lots(stockage, transcrire, nom_modele: str, seuil: float, a_traiter: list, lot: int) -> None:
     for i in range(0, len(a_traiter), lot):
         paquet = a_traiter[i:i + lot]
         with tempfile.TemporaryDirectory() as d:
@@ -75,15 +94,14 @@ def valider(stockage, transcrire, nom_modele: str, seuil: float, tout: bool = Fa
                 chemin.write_bytes(stockage.lire(j["fichier"]) or b"")
                 chemins.append(str(chemin))
             hypotheses = transcrire(chemins)
+        nouveaux = {}
         for j, h in zip(paquet, hypotheses):
             r = comparer(j["texte_final"], h, seuil)
-            resultats[j["fichier"]] = r | {"hypothese": h, "modele": nom_modele,
-                                           "horodatage": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-        ecrire_json(stockage, J.CLE_RESULTATS, resultats)   # sauvegarde après chaque lot
+            nouveaux[j["fichier"]] = r | {"hypothese": h, "modele": nom_modele,
+                                          "horodatage": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        J.maj_resultats(stockage, nouveaux)                 # fusion : ne touche que ce lot
+        J.marquer_validation(stockage, True)                # le marqueur reste frais pendant un long travail
         print(f"  {min(i + lot, len(a_traiter))}/{len(a_traiter)}")
-    a_verifier = sum(1 for r in resultats.values() if r["statut"] == "a_verifier")
-    print(f"Terminé : {a_verifier} enregistrement(s) à vérifier dans l'application.")
-    return resultats
 
 
 if __name__ == "__main__":

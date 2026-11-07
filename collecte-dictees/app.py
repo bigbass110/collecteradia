@@ -653,10 +653,10 @@ def admin_retrait(journal: list) -> None:
         for c in cles + [f"journaux/{code}.json", f"consentements/{code}.json", f"profils/{code}.json"]:
             stockage().supprimer(c)
         n_hist = I.supprimer_code(stockage(), code)
-        for cle in (J.CLE_RESULTATS, J.CLE_DECISIONS):
-            d = lire_json(stockage(), cle, {})
-            ecrire_json(stockage(), cle, {f: v for f, v in d.items()
-                                          if not f.startswith(f"brut/{code}_") and f not in segments_hist})
+        a_retirer = lambda f: f.startswith(f"brut/{code}_") or f in segments_hist   # noqa: E731
+        J.maj_resultats(stockage(), retires=[f for f in lire_json(stockage(), J.CLE_RESULTATS, {}) if a_retirer(f)])
+        d = lire_json(stockage(), J.CLE_DECISIONS, {})
+        ecrire_json(stockage(), J.CLE_DECISIONS, {f: v for f, v in d.items() if not a_retirer(f)})
         tous_les_journaux.clear()
         st.success(f"{len(cles) + n_hist} fichier(s) supprimé(s) pour {code}.")
 
@@ -704,7 +704,11 @@ def admin_dictees_reelles() -> None:
         st.info("MODAL_URL et MODAL_JETON ne sont pas configurés dans les Secrets (voir LISEZMOI.md, « Étiquetage sur GPU »).")
         return
     relancer = st.checkbox("Retraiter aussi les dictées en erreur")
-    if st.button("Lancer l'étiquetage", type="primary", disabled=TR.travail_en_cours(stockage())):
+    validation = J.validation_en_cours(stockage())
+    if validation:
+        st.info("Une validation (valider_enregistrements.py) est en cours sur la machine GPU : l'étiquetage "
+                "pourra être lancé quand elle sera terminée.")
+    if st.button("Lancer l'étiquetage", type="primary", disabled=TR.travail_en_cours(stockage()) or validation):
         import requests
         try:
             rep_ = requests.post(url, json={"test_locuteurs": sorted(test_locuteurs()), "relancer_erreurs": relancer},
@@ -716,7 +720,11 @@ def admin_dictees_reelles() -> None:
             st.success("Étiquetage lancé. Le GPU démarre (une à deux minutes), puis l'avancement s'affiche ici : "
                        "cliquez sur « Actualiser les données ».")
         elif rep_.status_code == 409:
-            st.warning("Un étiquetage est déjà en cours.")
+            try:
+                motif = rep_.json().get("detail") or "un étiquetage est déjà en cours"
+            except ValueError:
+                motif = "un étiquetage est déjà en cours"
+            st.warning(f"Lancement refusé : {motif}.")
         else:
             st.error(f"Le service GPU a refusé la demande (code {rep_.status_code}).")
     st.caption("Le GPU traite toutes les dictées en attente, puis s'éteint. Les segments douteux apparaissent "

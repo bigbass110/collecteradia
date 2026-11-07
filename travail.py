@@ -67,11 +67,15 @@ def dictees_en_attente(stockage, relancer_erreurs: bool) -> list:
 def traiter(stockage, transcrire_parakeet, transcrire_whisper, test_locuteurs: set,
             noms_propres: frozenset = frozenset(), relancer_erreurs: bool = False, id_travail: str = "") -> dict:
     """transcrire_* : fonction(chemin_wav, modalite) -> [{"mot", "debut", "fin"}]."""
+    if J.validation_en_cours(stockage):
+        motif = "une validation (valider_enregistrements.py) est en cours : relancez l'étiquetage quand elle sera terminée"
+        ecrire_json(stockage, CLE_TRAVAIL, {"id_travail": id_travail, "statut": "refuse", "motif": motif,
+                                            "maj": maintenant()})      # libère l'état « en cours »
+        raise RuntimeError(motif)
     attente = dictees_en_attente(stockage, relancer_erreurs)
     bilan = {"id_travail": id_travail, "statut": "en_cours", "debut": maintenant(), "maj": maintenant(),
              "total": len(attente), "traitees": 0, "segments": 0, "a_verifier": 0, "erreurs": 0}
     ecrire_json(stockage, CLE_TRAVAIL, bilan)
-    resultats = lire_json(stockage, J.CLE_RESULTATS, {})
 
     for d in attente:
         code, ident = d["code"], d["id"]
@@ -89,10 +93,11 @@ def traiter(stockage, transcrire_parakeet, transcrire_whisper, test_locuteurs: s
 
             cle_journal = f"journaux/hist_{code}.json"
             journal = lire_json(stockage, cle_journal, [])
+            retires, nouveaux = [], {}
             for ancien in [j for j in journal if j.get("groupe") == ident]:   # nouvelle passe : on remplace
                 stockage.supprimer(ancien["fichier"])
                 stockage.supprimer(ancien["fichier"].replace(".wav", ".txt"))
-                resultats.pop(ancien["fichier"], None)
+                retires.append(ancien["fichier"])
             journal = [j for j in journal if j.get("groupe") != ident]
 
             reserve_test = code in test_locuteurs or T.ensemble_de(ident) == "test"
@@ -116,14 +121,14 @@ def traiter(stockage, transcrire_parakeet, transcrire_whisper, test_locuteurs: s
                     "texte_parakeet": s["texte_parakeet"], "texte_whisper": s["texte_whisper"],
                     "micro": "", "lieu": "Pratique réelle", "version_app": VERSION_APP,
                 })
-                resultats[fichier] = {
+                nouveaux[fichier] = {
                     "statut": statut, "raisons": raisons,
                     "cer": round(ecart_caracteres(s["texte_parakeet"], s["texte_whisper"]), 4),
                     "hypothese": f"Parakeet : {s['texte_parakeet']} · Whisper : {s['texte_whisper']}",
                     "modele": "parakeet-tdt-0.6b-v3 + whisper-large-v3", "horodatage": maintenant(),
                 }
             ecrire_json(stockage, cle_journal, journal)
-            ecrire_json(stockage, J.CLE_RESULTATS, resultats)
+            J.maj_resultats(stockage, nouveaux, retires)
             etat[ident] = {"statut": "etiquete", "segments": len(res["segments"]), "a_verifier": nb_verif,
                            "exclus_identifiants": res["exclus_identifiants"],
                            "ponctuation_moteur": res.get("ponctuation_moteur", 0),

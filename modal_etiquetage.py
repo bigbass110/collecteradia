@@ -105,6 +105,9 @@ def lancer(corps: dict, request: Request):
     stockage = depuis_environnement()
     if travail.travail_en_cours(stockage):
         raise HTTPException(status_code=409, detail="un étiquetage est déjà en cours")
+    if travail.J.validation_en_cours(stockage):
+        raise HTTPException(status_code=409, detail="une validation (valider_enregistrements.py) est en cours ; "
+                                                    "relancez l'étiquetage quand elle sera terminée")
     id_travail = _secrets.token_hex(4)
     ecrire_json(stockage, travail.CLE_TRAVAIL,
                 {"id_travail": id_travail, "statut": "en_cours", "debut": travail.maintenant(),

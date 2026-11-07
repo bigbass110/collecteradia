@@ -195,6 +195,11 @@ python scripts/valider_enregistrements.py --seuil 0.25        # puis onglet « �
 python scripts/telecharger_donnees.py /data/radia --fractions 0.25,0.5
 ```
 
+La validation et l'étiquetage GPU ne tournent jamais en même temps : chacun refuse de démarrer
+pendant l'autre (le bouton « Lancer l'étiquetage » est alors désactivé). Si `valider_enregistrements.py`
+a été interrompu brutalement, son marqueur `validations/en_cours.json` expire après 20 minutes.
+Chaque programme ne modifie que ses propres lignes de `validations/resultats.json`.
+
 `/data/radia/<instantane>/` contient `train.json`, `val.json`, les trois jeux de test,
 `train_25.json` et `train_50.json` (emboîtés) et `resume.json`.
 

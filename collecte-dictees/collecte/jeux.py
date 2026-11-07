@@ -9,7 +9,39 @@ from .texte import ensemble_de, termes_de
 
 CLE_RESULTATS = "validations/resultats.json"     # écrit par scripts/valider_enregistrements.py
 CLE_DECISIONS = "validations/decisions.json"     # écrit par le coordinateur (onglet À vérifier)
+CLE_VALIDATION_EN_COURS = "validations/en_cours.json"   # écrit par valider_enregistrements.py
+DELAI_VERROU_S = 20 * 60                               # un marqueur plus ancien est considéré abandonné
 ENSEMBLES = ["train", "val", "test_voix_connues", "test_voix_nouvelles", "test_comptes_rendus", "test_historique"]
+
+
+def maj_resultats(stockage, nouveaux: dict = None, retires=()) -> dict:
+    """Met à jour validations/resultats.json en relisant sa DERNIÈRE version juste avant d'écrire :
+    chaque programme (étiquetage GPU, validation, retrait de consentement) ne modifie que ses propres
+    lignes, et n'efface jamais celles qu'un autre a écrites entre-temps."""
+    resultats = lire_json(stockage, CLE_RESULTATS, {})
+    for f in retires:
+        resultats.pop(f, None)
+    resultats.update(nouveaux or {})
+    ecrire_json(stockage, CLE_RESULTATS, resultats)
+    return resultats
+
+
+def _age_s(horodatage: str) -> float:
+    return (datetime.now(timezone.utc) - datetime.fromisoformat(horodatage)).total_seconds()
+
+
+def validation_en_cours(stockage) -> bool:
+    """Vrai si valider_enregistrements.py tourne (marqueur mis à jour il y a moins de 20 minutes)."""
+    maj = lire_json(stockage, CLE_VALIDATION_EN_COURS, {}).get("maj")
+    return bool(maj) and _age_s(maj) < DELAI_VERROU_S
+
+
+def marquer_validation(stockage, active: bool) -> None:
+    if active:
+        ecrire_json(stockage, CLE_VALIDATION_EN_COURS,
+                    {"maj": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    else:
+        stockage.supprimer(CLE_VALIDATION_EN_COURS)
 
 
 def couverture(journal: list, lexique: list) -> dict:
