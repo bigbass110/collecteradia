@@ -53,6 +53,13 @@ Dépôt GitHub ──déploiement──▶ Streamlit Community Cloud ◀── r
 
 ## Contenu du dépôt
 
+Tout le code est dans ce dossier `collecte-dictees/`, en un seul exemplaire. À la racine du dépôt ne
+restent que les fichiers lus à cet endroit par les services : `app.py` (quelques lignes qui lancent
+`collecte-dictees/app.py` pour Streamlit Cloud), `requirements.txt` et `packages.txt` (identiques à
+ceux d'ici, vérifié par `tests/test_racine.py`), le workflow GitHub Actions et le crochet `pre-push`.
+**Modifiez toujours les fichiers de `collecte-dictees/`** ; une dépendance ajoutée ici doit l'être
+aussi dans `requirements.txt` à la racine.
+
 | Fichier | Rôle |
 | --- | --- |
 | `app.py` | L'interface Streamlit |
@@ -106,7 +113,8 @@ OAuth**, type Application Web, URI de redirection `https://<votre-app>.streamlit
 
 ### 4. Streamlit Community Cloud
 
-share.streamlit.io → **Create app** → dépôt, branche `main`, fichier `app.py` → **Advanced
+share.streamlit.io → **Create app** → dépôt, branche `main`, fichier `app.py` (celui de la racine,
+qui lance `collecte-dictees/app.py`) → **Advanced
 settings** : Python 3.12, et dans **Secrets** le contenu de `.streamlit/secrets.toml.exemple`
 rempli. `cookie_secret` : `python -c "import secrets; print(secrets.token_hex(32))"`.
 
@@ -142,7 +150,7 @@ les termes que les moteurs ont mal entendus, pas à remplacer la dictée.
    dépenses**. La facturation est à la seconde de GPU ; vérifiez la grille tarifaire et les éventuels
    crédits gratuits mensuels.
 2. Créez dans R2 un jeton **lecture et écriture** limité au compartiment, réservé au programme GPU.
-3. Sur votre ordinateur, à la racine du dépôt :
+3. Sur votre ordinateur, dans le dossier `collecte-dictees/` du dépôt :
 
 ```bash
 pip install modal

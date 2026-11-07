@@ -6,3 +6,4 @@ __pycache__/
 .pytest_cache/
 *.tmp
 phrases_proposees.csv
+.DS_Store
