@@ -31,6 +31,32 @@ class StockageLocal:
         (self.racine / cle).unlink(missing_ok=True)
 
 
+CODES_ABSENT = {"NoSuchKey", "404", "NotFound"}
+CONSEILS = {
+    "AccessDenied": "le jeton R2 n'a pas les droits sur ce compartiment (lecture et écriture), ou il a été supprimé",
+    "InvalidAccessKeyId": "l'identifiant de clé R2 (access_key_id) est inconnu : jeton supprimé ou mal recopié",
+    "SignatureDoesNotMatch": "la clé secrète R2 (secret_access_key) ne correspond pas à l'identifiant de clé",
+    "NoSuchBucket": "le compartiment indiqué (bucket) n'existe pas dans ce compte Cloudflare",
+    "Unauthorized": "les clés R2 sont refusées : vérifiez account_id, access_key_id et secret_access_key",
+}
+
+
+class ErreurStockage(RuntimeError):
+    """Le stockage refuse l'opération. Le message (code R2 et conseil) ne contient aucune clé ni donnée :
+    il peut être affiché tel quel."""
+
+    def __init__(self, operation: str, code: str):
+        self.code = code
+        conseil = CONSEILS.get(code, "vérifiez les clés R2 dans les Secrets de l'application")
+        super().__init__(f"Le stockage Cloudflare R2 refuse l'opération « {operation} » (code {code}) : {conseil}.")
+
+
+def _code_erreur(exc) -> str:
+    reponse = getattr(exc, "response", None) or {}
+    return str((reponse.get("Error") or {}).get("Code") or (reponse.get("ResponseMetadata") or {}).get("HTTPStatusCode")
+               or type(exc).__name__)
+
+
 class StockageR2:
     def __init__(self, conf: dict, client=None):
         self.bucket = conf["bucket"]
@@ -47,13 +73,19 @@ class StockageR2:
         self.s3 = client
 
     def ecrire(self, cle: str, donnees: bytes) -> None:
-        self.s3.put_object(Bucket=self.bucket, Key=cle, Body=donnees)
+        try:
+            self.s3.put_object(Bucket=self.bucket, Key=cle, Body=donnees)
+        except Exception as exc:
+            raise ErreurStockage("écriture", _code_erreur(exc)) from exc
 
     def lire(self, cle: str):
         try:
             return self.s3.get_object(Bucket=self.bucket, Key=cle)["Body"].read()
-        except self.s3.exceptions.NoSuchKey:
-            return None
+        except Exception as exc:
+            code = _code_erreur(exc)
+            if code in CODES_ABSENT:
+                return None
+            raise ErreurStockage("lecture", code) from exc
 
     def lister(self, prefixe: str) -> list:
         cles, jeton = [], None
@@ -61,14 +93,20 @@ class StockageR2:
             args = {"Bucket": self.bucket, "Prefix": prefixe}
             if jeton:
                 args["ContinuationToken"] = jeton
-            rep = self.s3.list_objects_v2(**args)
+            try:
+                rep = self.s3.list_objects_v2(**args)
+            except Exception as exc:
+                raise ErreurStockage("liste", _code_erreur(exc)) from exc
             cles += [o["Key"] for o in rep.get("Contents", [])]
             if not rep.get("IsTruncated"):
                 return sorted(cles)
             jeton = rep["NextContinuationToken"]
 
     def supprimer(self, cle: str) -> None:
-        self.s3.delete_object(Bucket=self.bucket, Key=cle)
+        try:
+            self.s3.delete_object(Bucket=self.bucket, Key=cle)
+        except Exception as exc:
+            raise ErreurStockage("suppression", _code_erreur(exc)) from exc
 
 
 def lire_json(stockage, cle: str, defaut):

@@ -32,7 +32,7 @@ from collecte import importation as I
 from collecte import jeux as J
 from collecte import travail as TR
 from collecte import texte as T
-from collecte.stockage import StockageLocal, StockageR2, ecrire_json, lire_json
+from collecte.stockage import ErreurStockage, StockageLocal, StockageR2, ecrire_json, lire_json
 
 BASE = Path(__file__).parent
 VERSION_CONSENTEMENT = "v3"
@@ -987,4 +987,10 @@ if ident:
                "consignes": page_consignes, "administration": lambda: page_administration(ident)}
     pages = [st.Page(actions[chemin], title=titre, icon=icone, url_path=chemin, default=chemin == "enregistrer")
              for chemin, titre, icone in PAGES if chemin != "administration" or ident["admin"]]
-    st.navigation(pages, position="top").run()
+    try:
+        st.navigation(pages, position="top").run()
+    except ErreurStockage as erreur:      # message sans secret : affiché tel quel au lieu de l'erreur masquée
+        st.error(f"**Stockage inaccessible.** {erreur}")
+        st.caption("Coordinateur : Streamlit Cloud → Manage app → Settings → Secrets, section [r2] "
+                   "(account_id, access_key_id, secret_access_key, bucket). Le jeton R2 doit avoir les droits "
+                   "« Object Read & Write » sur ce compartiment.")

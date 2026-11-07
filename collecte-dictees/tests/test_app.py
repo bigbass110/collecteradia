@@ -252,3 +252,29 @@ def test_duree_lisible():
     exec(code, espace)
     f = espace["duree_lisible"]
     assert [f(45), f(125), f(3600 * 3 + 300), f(None)] == ["45 s", "2 min", "3 h 05", "0 s"]
+
+
+def test_stockage_refuse_message_clair_au_lieu_d_un_plantage(monkeypatch):
+    import streamlit as st
+
+    from collecte import stockage as S
+
+    def refuse(self, *a, **k):
+        raise S.ErreurStockage("lecture", "AccessDenied")
+    monkeypatch.setattr(S.StockageR2, "__init__", lambda self, conf, client=None: None)
+    monkeypatch.setattr(S.StockageR2, "lire", refuse)
+    monkeypatch.setattr(S.StockageR2, "lister", refuse)
+    monkeypatch.chdir(RACINE)
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    at = AppTest.from_file(str(RACINE / "app.py"))
+    for cle, valeur in {"MODE_ACCES": "mot_de_passe", "STOCKAGE": "r2", "APP_PASSWORD": "x",
+                        "r2": {"bucket": "radia"}}.items():
+        at.secrets[cle] = valeur
+    at.run(timeout=60)
+    at.text_input[0].input("x").run(timeout=60)
+    at.sidebar.text_input[0].input("dr01").run(timeout=60)
+    assert not at.exception                                       # plus d'erreur masquée
+    assert any("Stockage inaccessible" in e.value and "AccessDenied" in e.value and "droits" in e.value
+               for e in at.error)
+    st.cache_resource.clear()
