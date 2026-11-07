@@ -104,3 +104,96 @@ def test_onglet_a_verifier_classe_par_valeur(tmp_path, monkeypatch):
     assert choix.options[0].startswith("+6 · terme manqué : spiculée")
     assert choix.options[1].startswith("+0 · écart global")
     assert any("Pourquoi ici" in c.value and "erreur critique" in c.value for c in at.caption)
+
+
+def _projet_temporaire(tmp_path, monkeypatch, code="dr01"):
+    import json
+    import shutil
+
+    import streamlit as st
+    projet = tmp_path / "projet"
+    shutil.copytree(RACINE / "collecte", projet / "collecte")
+    for f in ("app.py", "lexique.csv", "phrases.csv"):
+        shutil.copy(RACINE / f, projet / f)
+    (projet / ".streamlit").mkdir()
+    (projet / ".streamlit" / "secrets.toml").write_text('MODE_ACCES="mot_de_passe"\nSTOCKAGE="local"\nAPP_PASSWORD="x"\n')
+    version = next(l for l in (RACINE / "app.py").read_text().splitlines() if l.startswith("VERSION_CONSENTEMENT"))
+    (projet / "donnees" / "consentements").mkdir(parents=True)
+    (projet / "donnees" / "consentements" / f"{code}.json").write_text(
+        json.dumps({"version": version.split("=")[1].strip().strip('"\'')}))
+    monkeypatch.chdir(projet)
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    return projet
+
+
+def _connecter(projet, code="dr01"):
+    at = AppTest.from_file(str(projet / "app.py")).run(timeout=60)
+    at.text_input[0].input("x").run(timeout=60)
+    at.sidebar.text_input[0].input(code).run(timeout=60)
+    at.sidebar.radio[0].set_value("Importer des dictées").run(timeout=60)
+    return at
+
+
+def test_import_appariement_manuel_et_modalite_par_dictee(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    import numpy as np
+    import streamlit as st
+
+    from collecte import audio as A
+    projet = _projet_temporaire(tmp_path, monkeypatch)
+    wav = lambda k: A.en_wav((0.05 * np.sin(np.linspace(0, 900 + k, A.FREQ * 6))).astype("float32"))
+    deposes = [SimpleNamespace(name=n, getvalue=(lambda d=d: d)) for n, d in [
+        ("0001.wav", wav(1)), ("0001.txt", "Nom : DIOP Amadou\nPas d'adénopathie axillaire.".encode()),
+        ("DICT_17.wav", wav(2)), ("CR scanner.rtf", rb"{\rtf1\ansi Plage de verre d\'e9poli.\par}")]]
+    vrai = st.file_uploader
+    monkeypatch.setattr(st, "file_uploader",
+                        lambda label, **kw: deposes if str(kw.get("key", "")).startswith("import_") else vrai(label, **kw))
+
+    at = _connecter(projet)
+    assert not at.exception
+    assert "Associer les dictées restantes" in [s.value for s in at.subheader]
+    at.selectbox(key="import_0_assoc_DICT_17.wav").set_value("CR scanner.rtf").run(timeout=60)
+    assert any("Pas d'adénopathie axillaire." in t.value for t in at.text)
+    assert any("ligne(s) d'en-tête ignorée(s)" in c.value and "DIOP" in c.value for c in at.caption)
+    at.selectbox(key="import_0_mod_1").set_value("Thorax").run(timeout=60)
+    assert any("**2** dictée(s) prête(s)" in m.value for m in at.markdown)
+    next(b for b in at.button if b.label == "Importer").click().run(timeout=60)
+    assert not at.exception
+    assert any("2 dictée(s) importée(s) sur 2" in s.value for s in at.success)
+    index = json.loads((projet / "donnees" / "historique" / "index" / "dr01.json").read_text())
+    assert sorted(e["modalite"] for e in index) == ["", "Thorax"]
+    textes = sorted((projet / "donnees" / "historique" / "cr" / f"{e['id']}.txt").read_text() for e in index)
+    assert textes[1].startswith("Plage de verre dépoli")
+
+
+def test_corriger_puis_supprimer_une_dictee_importee(tmp_path, monkeypatch):
+    import json
+
+    import numpy as np
+
+    from collecte import audio as A
+    from collecte import importation as I
+    from collecte.stockage import StockageLocal
+    projet = _projet_temporaire(tmp_path, monkeypatch)
+    s = StockageLocal(projet / "donnees")
+    ident, _ = I.enregistrer(s, "dr01", A.en_wav(np.full(A.FREQ * 6, 0.01, dtype="float32")), 6.0,
+                             "Pas d'adénopathie.", "Sénologie", "radiologue")
+    at = _connecter(projet)
+    assert "Corriger une dictée importée" in [h.value for h in at.subheader]
+    at.selectbox(key=f"corr_mod_{ident}").set_value("Thorax").run(timeout=60)
+    next(b for b in at.button if b.label == "Enregistrer la modalité").click().run(timeout=60)
+    assert I.index_de(s, "dr01")[0]["modalite"] == "Thorax"
+    at.text_area(key=f"corr_texte_{ident}").input("IRM du genou droit. Ménisque normal.").run(timeout=60)
+    next(b for b in at.button if b.label == "Remplacer le compte rendu").click().run(timeout=60)
+    assert s.lire(f"historique/cr/{ident}.txt").decode() == "IRM du genou droit. Ménisque normal."
+    assert any("ré-étiquetée" in m.value for m in at.success)
+    supprimer = next(b for b in at.button if b.label == "Supprimer la dictée")
+    assert supprimer.disabled                                     # confirmation obligatoire
+    at.checkbox(key=f"corr_confirme_{ident}").check().run(timeout=60)
+    next(b for b in at.button if b.label == "Supprimer la dictée").click().run(timeout=60)
+    assert not at.exception
+    assert I.index_de(s, "dr01") == [] and s.lire(f"historique/audio/{ident}.wav") is None
+    assert json.loads((projet / "donnees" / "historique" / "index" / "dr01.json").read_text()) == []

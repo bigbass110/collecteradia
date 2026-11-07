@@ -46,7 +46,8 @@ Dépôt GitHub ──déploiement──▶ Streamlit Community Cloud ◀── r
 | Répartition | Déterministe par identifiant de phrase (80/10/10) : une phrase ne change jamais d'ensemble |
 | Instantanés | `train`, `val`, `test_voix_connues`, `test_voix_nouvelles`, `test_comptes_rendus`, `test_historique` + résumé (heures, voix, sources, versions) |
 | Traçabilité | Chaque enregistrement garde texte attendu et final, micro, lieu, navigateur, versions de la banque et de l'application |
-| Import de dictées réelles | Paires audio + compte rendu (txt, docx, pdf), associées par nom de fichier ; noms d'origine jamais conservés ; doublons refusés |
+| Import de dictées réelles | Paires audio + compte rendu (txt, docx, pdf, rtf, odt, doc) ou archive .zip ; associées par nom de fichier, ou à la main (autre fichier ou texte collé) ; aperçu avant import (écoute, texte extrait, lignes d'en-tête ignorées) ; modalité par dictée ; noms d'origine jamais conservés ; doublons refusés |
+| Correction d'une dictée importée | Changer la modalité, remplacer un compte rendu mal associé (la dictée est ré-étiquetée), ou supprimer la dictée et ses segments ; impossible pendant un étiquetage |
 | Étiquetage sur GPU | Parakeet + Whisper + compte rendu ; corrections confirmées par deux sources ; texte de modèle ignoré ; passages avec nom, date ou âge exclus ; segments de 1,5 à 20 s |
 | Administration | Vue d'ensemble, couverture du lexique, à vérifier, écoute et suppression, dictées réelles, instantanés, retrait de consentement |
 | Ordre « À vérifier » | Par valeur : erreur critique du modèle de base (+4), terme du lexique manqué (+2 chacun, 3 au plus), correction du compte rendu à confirmer (+3), réservé au test (+2), nom propre, commande ou désaccord possible (+1) ; compte rendu mal apparié en dernier (−3) |
@@ -126,8 +127,12 @@ autorisée par espace de travail sur Community Cloud.
 ### Ce qui se passe
 
 1. Un radiologue (ou le coordinateur, pour son compte) dépose ses dictées et leurs comptes rendus
-   dans **« Importer des dictées »**, par lots de 20 au plus. L'audio est converti en 16 kHz ;
-   le compte rendu en texte. Le nom de fichier d'origine est remplacé par un identifiant aléatoire.
+   dans **« Importer des dictées »**, par lots de 20 au plus, éventuellement dans une archive .zip.
+   Un audio sans compte rendu du même nom est associé à la main : choix d'un autre fichier, ou texte
+   collé depuis le RIS ou RadIA. Avant l'import, chaque dictée s'écoute, son compte rendu extrait se
+   relit (avec les lignes d'en-tête qui seront ignorées) et sa modalité se choisit. L'audio est converti
+   en 16 kHz ; le compte rendu en texte. Le nom de fichier d'origine est remplacé par un identifiant
+   aléatoire. Une dictée mal associée se corrige ensuite sur la même page.
 2. Le coordinateur clique sur **« Lancer l'étiquetage »** (Administration → « Dictées réelles »).
    Un GPU démarre chez Modal, traite toutes les dictées en attente, puis s'éteint.
 3. Pour chaque dictée : transcription par Parakeet et par Whisper, rapprochement avec le compte
@@ -182,6 +187,8 @@ modal deploy gpu/modal_etiquetage.py
   corrections du compte rendu de façon indépendante.
 - **Formats de dictaphone** : DSS est souvent lisible ; DS2 (Philips) ne l'est généralement pas :
   convertissez-le d'abord avec le logiciel du dictaphone.
+- **Comptes rendus .doc** (ancien Word) : lus avec `antiword` (dans `packages.txt`). S'il manque, la
+  page demande d'enregistrer le fichier en .docx. Les PDF scannés (sans texte) sont refusés.
 - Une dictée en erreur n'arrête pas le lot ; cochez « Retraiter aussi les dictées en erreur » pour
   la relancer.
 

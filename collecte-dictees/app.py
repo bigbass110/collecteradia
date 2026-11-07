@@ -390,12 +390,27 @@ def page_enregistrer(ident: dict) -> None:
 STATUTS = {None: "en attente d'étiquetage", "etiquete": "étiquetée", "erreur": "erreur"}
 
 
+@st.cache_data(show_spinner=False, max_entries=64)
+def texte_de_fichier(nom: str, contenu: bytes) -> tuple:
+    """(texte extrait, message d'erreur) d'un compte rendu déposé ; mis en cache entre deux affichages."""
+    try:
+        return I.extraire_texte(nom, contenu), ""
+    except Exception as erreur:
+        return "", f"{erreur}"[:300] or type(erreur).__name__
+
+
+def _modalite_saisie(valeur: str) -> str:
+    return "" if valeur == "Non précisée" else valeur
+
+
 def page_importer(ident: dict) -> None:
     st.title("Importer des dictées")
-    st.write("Déposez des dictées réalisées en pratique, chacune avec son compte rendu. Ils sont associés "
-             "par le nom de fichier : **0001.m4a** avec **0001.docx**. Les noms de fichiers ne sont pas conservés.")
-    st.caption(f"Audio : {', '.join(sorted(e[1:] for e in I.EXT_AUDIO))}. Compte rendu : txt, docx ou pdf "
-               f"contenant du texte. Au plus {I.MAX_LOT} dictées par envoi, de 5 secondes à 30 minutes chacune.")
+    st.write("Déposez des dictées réalisées en pratique, avec leurs comptes rendus. Ils sont associés "
+             "par le nom de fichier (**0001.m4a** avec **0001.docx**) ; sinon, vous les associez vous-même, ou "
+             "vous collez le texte du compte rendu. Les noms de fichiers ne sont pas conservés.")
+    st.caption(f"Audio : {', '.join(sorted(e[1:] for e in I.EXT_AUDIO))}. Compte rendu : "
+               f"{', '.join(sorted(e[1:] for e in I.EXT_TEXTE))} (PDF contenant du texte). Ou une archive .zip. "
+               f"Au plus {I.MAX_LOT} dictées par envoi, de 5 secondes à 30 minutes chacune.")
     if ident["admin"]:
         options = codes_connus()
         if not options:
@@ -414,32 +429,12 @@ def page_importer(ident: dict) -> None:
         return
 
     modalites = ["Non précisée"] + sorted({p["modalite"] for p in banque()[0]}) + ["Autre"]
-    modalite = st.selectbox("Modalité de ces dictées", modalites)
+    modalite = st.selectbox("Modalité par défaut de ces dictées", modalites)
     cle = f"import_{st.session_state.get('compteur_import', 0)}"
     fichiers = st.file_uploader("Fichiers audio et comptes rendus", accept_multiple_files=True, key=cle,
-                                type=sorted(e[1:] for e in I.EXT_AUDIO | I.EXT_TEXTE))
+                                type=sorted(e[1:] for e in I.EXT_AUDIO | I.EXT_TEXTE | I.EXT_ARCHIVE))
     if fichiers:
-        paires, problemes = I.apparier(fichiers)
-        st.write(f"**{len(paires)}** dictée(s) complète(s) prête(s) à importer.")
-        for pb in problemes:
-            st.warning(pb)
-        if len(paires) > I.MAX_LOT:
-            st.error(f"Au plus {I.MAX_LOT} dictées par envoi : retirez des fichiers et importez en plusieurs fois.")
-        elif paires and st.button("Importer", type="primary"):
-            barre, bilan = st.progress(0.0, text="Import en cours…"), []
-            for k, (fa, ft) in enumerate(paires):
-                try:
-                    audio = A.convertir_16k(fa.getvalue())
-                    texte = I.extraire_texte(ft.name, ft.getvalue())
-                    ident_d, motif = I.enregistrer(stockage(), code, A.en_wav(audio), len(audio) / A.FREQ, texte,
-                                                   "" if modalite == "Non précisée" else modalite, par)
-                except Exception as erreur:
-                    ident_d, motif = None, f"fichier illisible ({type(erreur).__name__})"
-                bilan.append({"fichier": fa.name, "résultat": "importée" if ident_d else motif})
-                barre.progress((k + 1) / len(paires), text=f"{k + 1} / {len(paires)}")
-            st.session_state.bilan_import = bilan
-            st.session_state.compteur_import = st.session_state.get("compteur_import", 0) + 1
-            st.rerun()
+        importer_fichiers(code, par, fichiers, modalites, modalite, cle)
     if bilan := st.session_state.pop("bilan_import", None):
         ok = sum(b["résultat"] == "importée" for b in bilan)
         (st.success if ok == len(bilan) else st.warning)(f"{ok} dictée(s) importée(s) sur {len(bilan)}.")
@@ -458,6 +453,133 @@ def page_importer(ident: dict) -> None:
     st.dataframe(pd.DataFrame(lignes), hide_index=True, width="stretch")
     st.caption("L'étiquetage est lancé par le coordinateur. Il découpe chaque dictée en segments, écarte les "
                "passages où un nom, une date ou un âge est prononcé, et signale les segments à relire.")
+    corriger_dictee(code, index, modalites)
+
+
+def importer_fichiers(code: str, par: str, fichiers: list, modalites: list, modalite: str, cle: str) -> None:
+    fichiers, problemes_zip = I.deballer(fichiers)
+    paires, audios_seuls, textes_seuls, problemes = I.apparier_detail(fichiers)
+    for pb in problemes_zip + problemes:
+        st.warning(pb)
+    dictees = [{"audio": a, "cr": t} for a, t in paires]
+    bloque = False
+
+    if audios_seuls:
+        st.subheader("Associer les dictées restantes")
+        st.caption("Ces audios n'ont pas de compte rendu du même nom : choisissez le bon fichier, ou collez "
+                   "le texte du compte rendu.")
+        noms_cr = [t.name for t in textes_seuls]
+        pris = {}
+        for a in audios_seuls:
+            choix = st.selectbox(a.name, ["Ne pas importer", "Coller le texte du compte rendu"] + noms_cr,
+                                 key=f"{cle}_assoc_{a.name}")
+            if choix == "Coller le texte du compte rendu":
+                dictees.append({"audio": a, "cr": None})
+            elif choix != "Ne pas importer":
+                pris[choix] = pris.get(choix, 0) + 1
+                dictees.append({"audio": a, "cr": next(t for t in textes_seuls if t.name == choix)})
+        if doublons := [n for n, k in pris.items() if k > 1]:
+            st.error("Un même compte rendu est associé à plusieurs dictées : " + ", ".join(doublons))
+            bloque = True
+        if inutilises := [n for n in noms_cr if n not in pris]:
+            st.caption("Comptes rendus non utilisés : " + ", ".join(inutilises))
+    elif textes_seuls:
+        st.caption("Comptes rendus sans audio, ignorés : " + ", ".join(t.name for t in textes_seuls))
+    if not dictees:
+        return
+
+    st.subheader("Vérifier avant d'importer")
+    prets = []
+    for k, d in enumerate(dictees):
+        a = d["audio"]
+        titre = f"{a.name}  +  {d['cr'].name if d['cr'] else 'texte collé'}"
+        with st.expander(titre, expanded=len(dictees) <= 3):
+            mod = st.selectbox("Modalité", modalites, index=modalites.index(modalite), key=f"{cle}_mod_{k}")
+            if st.toggle("Écouter l'audio", key=f"{cle}_ecoute_{k}"):
+                st.audio(a.getvalue())
+            if d["cr"] is None:
+                texte, erreur = st.text_area("Texte du compte rendu", key=f"{cle}_colle_{k}", height=180), ""
+            else:
+                texte, erreur = texte_de_fichier(d["cr"].name, d["cr"].getvalue())
+            if erreur:
+                st.error(f"Compte rendu illisible : {erreur}")
+            elif not texte.strip():
+                st.warning("Compte rendu vide (PDF scanné, ou texte pas encore collé) : cette dictée ne sera "
+                           "pas importée.")
+            else:
+                gardees, retirees = I.apercu_compte_rendu(texte)
+                if retirees:
+                    st.caption(f"{len(retirees)} ligne(s) d'en-tête ignorée(s) à l'étiquetage : "
+                               + " · ".join(retirees))
+                st.text("\n".join(gardees)[:3000])
+                prets.append((a, texte, _modalite_saisie(mod)))
+
+    st.write(f"**{len(prets)}** dictée(s) prête(s) à importer sur {len(dictees)}.")
+    if len(prets) > I.MAX_LOT:
+        st.error(f"Au plus {I.MAX_LOT} dictées par envoi : retirez des fichiers et importez en plusieurs fois.")
+    elif prets and not bloque and st.button("Importer", type="primary"):
+        barre, bilan = st.progress(0.0, text="Import en cours…"), []
+        for k, (fa, texte, mod) in enumerate(prets):
+            try:
+                audio = A.convertir_16k(fa.getvalue())
+                ident_d, motif = I.enregistrer(stockage(), code, A.en_wav(audio), len(audio) / A.FREQ, texte, mod, par)
+            except Exception as erreur:
+                ident_d, motif = None, f"fichier illisible ({type(erreur).__name__})"
+            bilan.append({"fichier": fa.name, "résultat": "importée" if ident_d else motif})
+            barre.progress((k + 1) / len(prets), text=f"{k + 1} / {len(prets)}")
+        st.session_state.bilan_import = bilan
+        st.session_state.compteur_import = st.session_state.get("compteur_import", 0) + 1
+        st.rerun()
+
+
+def corriger_dictee(code: str, index: list, modalites: list) -> None:
+    st.subheader("Corriger une dictée importée")
+    if message := st.session_state.pop("message_correction", None):
+        st.success(message)
+    if TR.travail_en_cours(stockage()):
+        st.info("Un étiquetage est en cours : les corrections seront possibles quand il sera terminé.")
+        return
+    libelles = {e["id"]: f"{e['importe_le'][:10]} · {round(e['duree_s'] / 60, 1)} min · "
+                         f"{e.get('modalite') or 'modalité non précisée'} · {e['id']}" for e in reversed(index)}
+    ident_d = st.selectbox("Dictée", list(libelles), format_func=libelles.get, key="correction_dictee")
+    entree = next(e for e in index if e["id"] == ident_d)
+    if st.toggle("Écouter et relire le compte rendu", key=f"corr_voir_{ident_d}"):
+        audio = stockage().lire(f"historique/audio/{ident_d}.wav")
+        if audio:
+            st.audio(audio, format="audio/wav")
+        st.text((stockage().lire(f"historique/cr/{ident_d}.txt") or b"").decode("utf-8")[:3000])
+
+    actuelle = entree.get("modalite") or "Non précisée"
+    choix = modalites if actuelle in modalites else modalites + [actuelle]
+    mod = st.selectbox("Modalité", choix, index=choix.index(actuelle), key=f"corr_mod_{ident_d}")
+    if st.button("Enregistrer la modalité", disabled=mod == actuelle):
+        I.modifier_dictee(stockage(), code, ident_d, modalite=_modalite_saisie(mod))
+        tous_les_journaux.clear()
+        st.session_state.message_correction = "Modalité enregistrée."
+        st.rerun()
+
+    st.markdown("**Mauvais compte rendu ?** Déposez le bon fichier ou collez son texte. Les segments déjà "
+                "étiquetés de cette dictée sont effacés : elle sera ré-étiquetée au prochain lancement.")
+    nouveau = st.file_uploader("Bon compte rendu", type=sorted(e[1:] for e in I.EXT_TEXTE), key=f"corr_fichier_{ident_d}")
+    colle = st.text_area("ou texte du compte rendu", key=f"corr_texte_{ident_d}", height=120)
+    if st.button("Remplacer le compte rendu", disabled=not (nouveau or colle.strip())):
+        texte, erreur = texte_de_fichier(nouveau.name, nouveau.getvalue()) if nouveau else (colle, "")
+        refus = erreur or I.modifier_dictee(stockage(), code, ident_d, texte_cr=texte)
+        if refus:
+            st.error(f"Compte rendu non remplacé : {refus}")
+        else:
+            tous_les_journaux.clear()
+            st.session_state.message_correction = "Compte rendu remplacé : la dictée sera ré-étiquetée."
+            st.rerun()
+
+    confirme = st.checkbox("Je confirme la suppression de cette dictée, de son compte rendu et de ses segments",
+                           key=f"corr_confirme_{ident_d}")
+    if st.button("Supprimer la dictée", disabled=not confirme):
+        n = I.supprimer_dictee(stockage(), code, ident_d)
+        tous_les_journaux.clear()
+        st.session_state.message_correction = (f"Dictée supprimée ({n} segment(s) retiré(s)). Créez un nouvel "
+                                               "instantané pour qu'elle disparaisse aussi des jeux de données.")
+        st.rerun()
 
 
 # ─────────────────────────── Page : consignes ───────────────────────────
