@@ -79,6 +79,7 @@ aussi dans `requirements.txt` à la racine.
 | `tests/` | Tests automatiques (`pytest`) |
 | `docs/convention-ecriture.md` | La règle d'écriture, source unique |
 | `docs/recolte-radia.md` | Spécification de la récolte des dictées réelles depuis RadIA |
+| `docs/registre-suivi.md` | Blocages en cours, actions en attente et leur reprise |
 | `docs/fiche-reentrainement.md` | Ré-entraînement de Parakeet avec NeMo : réglages, commandes, critères de mise en service, registre |
 | `.github/workflows/verifications.yml` | Vérifie la banque et lance les tests à chaque envoi |
 
@@ -161,7 +162,7 @@ les termes que les moteurs ont mal entendus, pas à remplacer la dictée.
 pip install modal
 modal setup
 python -c "import secrets; print(secrets.token_hex(32))"      # notez cette chaîne : RADIA_JETON
-modal secret create radia-etiquetage \
+modal secret create custom-secret \
     R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_BUCKET=radia-collecte \
     RADIA_JETON=<la-chaine>
 modal deploy gpu/modal_etiquetage.py

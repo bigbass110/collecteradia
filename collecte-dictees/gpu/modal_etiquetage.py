@@ -4,7 +4,7 @@ Programme GPU (Modal) : étiquette les dictées importées depuis l'application.
 Déploiement (une fois, depuis la racine du dépôt) :
     pip install modal
     modal setup                                   # relie votre compte Modal
-    modal secret create radia-etiquetage \
+    modal secret create custom-secret \
         R2_ACCOUNT_ID=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_BUCKET=radia-collecte \
         RADIA_JETON=<longue-chaine-aleatoire>
     modal deploy gpu/modal_etiquetage.py
@@ -16,12 +16,14 @@ Test manuel sans l'application :
     curl -X POST <MODAL_URL> -H "Authorization: Bearer <RADIA_JETON>" \
          -H "Content-Type: application/json" -d '{"test_locuteurs": [], "relancer_erreurs": false}'
 """
+from __future__ import annotations   # Request n'existe que dans le conteneur (FastAPI)
+
 import secrets as _secrets
 
 import modal
 
 app = modal.App("radia-etiquetage")
-SECRET = modal.Secret.from_name("radia-etiquetage")
+SECRET = modal.Secret.from_name("custom-secret")   # nom du secret créé sur modal.com
 PARAKEET = "nvidia/parakeet-tdt-0.6b-v3"
 WHISPER = "large-v3"
 
