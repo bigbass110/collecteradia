@@ -81,8 +81,11 @@ def transcrire_tout(manifestes: dict, transcrire, taille_lot: int = 16) -> dict:
 
 # ─────────────────────────── Évaluation ───────────────────────────
 
-def evaluer(manifestes: dict, hypotheses: dict, lexique: list) -> dict:
+def evaluer(manifestes: dict, hypotheses: dict, lexique: list, deja_vus: set = None) -> dict:
     """hypotheses : {nom du modèle: {audio_filepath: texte}}, dans l'ordre (le premier = référence).
+    deja_vus : suites de mots de l'entraînement (EV.ngrammes_entrainement) ; s'il est donné, le WER est
+    aussi calculé sur les seuls énoncés « nouveaux » (moins de 50 % de leurs suites vues en entraînement),
+    pour ne pas laisser les phrases types répétées gonfler le gain.
     Calcul pur, sans GPU : c'est cette fonction qui est testée."""
     modeles = list(hypotheses)
     rapport = {"modeles": modeles, "ensembles": {}}
@@ -93,6 +96,11 @@ def evaluer(manifestes: dict, hypotheses: dict, lexique: list) -> dict:
         bloc = {"enonces": len(lignes), "groupes": len(set(groupes)),
                 "heures": round(sum(float(l.get("duration", 0)) for l in lignes) / 3600, 3),
                 "mesures": {}, "detail": []}
+        recouv = [EV.recouvrement(l["text"], deja_vus) for l in lignes] if deja_vus is not None else None
+        nouveaux = [k for k, r in enumerate(recouv) if r < EV.SEUIL_NOUVEAU] if recouv is not None else None
+        if nouveaux is not None:
+            bloc["enonces_nouveaux"] = len(nouveaux)
+            g_nouveaux = [groupes[k] for k in nouveaux]
         for m in modeles:
             mesures = EV.agreger(par_modele[m], lexique)
             mesures["wer_ic"] = EV.intervalle(par_modele[m], groupes, "erreurs", "mots")
@@ -102,12 +110,22 @@ def evaluer(manifestes: dict, hypotheses: dict, lexique: list) -> dict:
                     bloc["mesures"][modeles[0]]["wer_hors_commandes"] or 0)
                 mesures["ecart_wer_hors_commandes_ic"] = EV.intervalle(
                     par_modele[m], groupes, ecart_avec=par_modele[modeles[0]])
+            if nouveaux:
+                sous = [par_modele[m][k] for k in nouveaux]
+                mesures["wer_nouveaux"] = EV.agreger(sous, lexique)["wer_hors_commandes"]
+                mesures["wer_nouveaux_ic"] = EV.intervalle(sous, g_nouveaux)
+                if m != modeles[0]:
+                    ref = [par_modele[modeles[0]][k] for k in nouveaux]
+                    mesures["ecart_wer_nouveaux"] = (mesures["wer_nouveaux"] or 0) - (
+                        bloc["mesures"][modeles[0]]["wer_nouveaux"] or 0)
+                    mesures["ecart_wer_nouveaux_ic"] = EV.intervalle(sous, g_nouveaux, ecart_avec=ref)
             bloc["mesures"][m] = mesures
         for k, l in enumerate(lignes):
             bloc["detail"].append({
                 "audio_filepath": l["audio_filepath"], "reference": l["text"], "groupe": groupes[k],
                 "hypotheses": {m: hypotheses[m].get(l["audio_filepath"], "") for m in modeles},
                 "critiques": {m: [c for c, e in par_modele[m][k]["critiques"].items() if e] for m in modeles},
+                **({"recouvrement": round(recouv[k], 3)} if recouv is not None else {}),
             })
         rapport["ensembles"][ens] = bloc
     return rapport
@@ -145,6 +163,15 @@ def tableau(rapport: dict) -> str:
             ligne("  écart avec la référence", ["référence"] + [
                 f"{100 * x['ecart_wer_hors_commandes']:+.1f} pts".replace(".", ",")
                 + _ic(x["ecart_wer_hors_commandes_ic"]) for x in me[1:]])
+        if bloc.get("enonces_nouveaux"):
+            ligne(f"WER phrases nouvelles ({bloc['enonces_nouveaux']})",
+                  [_pct(x.get("wer_nouveaux")) + _ic(x.get("wer_nouveaux_ic")) for x in me])
+            if len(modeles) > 1:
+                ligne("  écart avec la référence", ["référence"] + [
+                    f"{100 * x['ecart_wer_nouveaux']:+.1f} pts".replace(".", ",") + _ic(x.get("ecart_wer_nouveaux_ic"))
+                    for x in me[1:]])
+        elif "enonces_nouveaux" in bloc:
+            ligne("WER phrases nouvelles", ["aucun énoncé nouveau"] + [""] * (len(modeles) - 1))
         ligne("WER (commandes comprises)", [_pct(x["wer"]) + _ic(x["wer_ic"]) for x in me])
         ligne("Commandes : rappel", [_pct(x["commandes_rappel"]) for x in me])
         ligne("Commandes : précision", [_pct(x["commandes_precision"]) for x in me])
@@ -175,6 +202,8 @@ def main(argv=None):
     p.add_argument("--ensembles", default=",".join(ENSEMBLES_TEST))
     p.add_argument("--lexique", type=Path, default=RACINE / "lexique.csv")
     p.add_argument("--lot", type=int, default=16, help="taille des lots de transcription")
+    p.add_argument("--train", type=Path, help="manifeste d'entraînement du modèle évalué, pour repérer les phrases "
+                                             "répétées (défaut : <instantane>/train.json s'il existe)")
     p.add_argument("--sortie", type=Path, help="rapport JSON (défaut : <instantane>/evaluation_<horodatage>.json)")
     a = p.parse_args(argv)
 
@@ -194,7 +223,13 @@ def main(argv=None):
         except Exception:
             pass
 
-    rapport = evaluer(manifestes, hypotheses, lexique)
+    train = a.train or (a.instantane / "train.json")
+    deja_vus = None
+    if train.exists():
+        textes = [json.loads(l)["text"] for l in train.read_text(encoding="utf-8").splitlines() if l.strip()]
+        deja_vus = EV.ngrammes_entrainement(textes)
+        print(f"Phrases répétées repérées d'après {train.name} ({len(textes)} énoncés d'entraînement).")
+    rapport = evaluer(manifestes, hypotheses, lexique, deja_vus)
     rapport["instantane"] = a.instantane.name
     rapport["cree_le"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     sortie = a.sortie or a.instantane / f"evaluation_{datetime.now(timezone.utc):%Y-%m-%d_%H%M%S}.json"

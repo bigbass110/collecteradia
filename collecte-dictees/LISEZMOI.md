@@ -230,6 +230,7 @@ Pour chaque jeu de test, le script affiche :
 | Mesure | Ce qu'elle dit |
 | --- | --- |
 | WER hors commandes | Erreurs de mots, commandes dictées exclues. **La comparaison équitable avec le modèle de base**, qui écrit « , » au lieu de « virgule » |
+| WER phrases nouvelles | Même mesure sur les seuls énoncés dont moins de la moitié des suites de 5 mots figure dans `train.json` (`--train` pour un autre manifeste). **Le gain réel**, sans l'effet des phrases types répétées (« foie de taille normale ») |
 | WER | Erreurs de mots, commandes comprises : ce que le formatage vocal de RadIA recevra |
 | Commandes (rappel, précision) | Commandes dictées retrouvées ; commandes écrites à tort |
 | Négation, latéralité, nombres | Énoncés où l'une d'elles diffère de la référence. **Les erreurs qui comptent cliniquement** |

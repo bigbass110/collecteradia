@@ -57,6 +57,34 @@ def _decouper_commandes(m: list) -> tuple:
     return commandes, reste
 
 
+TAILLE_NGRAMME = 5
+SEUIL_NOUVEAU = 0.5
+
+
+def ngrammes(texte: str, n: int = TAILLE_NGRAMME) -> set:
+    """Suites de n mots du texte, commandes dictées exclues (une phrase type reste la même, que le
+    radiologue ait dicté « virgule » ou non). Un texte plus court que n mots donne une seule suite."""
+    m = _decouper_commandes(mots(texte))[1]
+    if len(m) < n:
+        return {tuple(m)} if m else set()
+    return {tuple(m[i:i + n]) for i in range(len(m) - n + 1)}
+
+
+def recouvrement(texte: str, deja_vus: set, n: int = TAILLE_NGRAMME) -> float:
+    """Part des suites de n mots du texte déjà présentes dans l'entraînement (deja_vus)."""
+    g = ngrammes(texte, n)
+    return sum(x in deja_vus for x in g) / len(g) if g else 0.0
+
+
+def ngrammes_entrainement(textes: list, n: int = TAILLE_NGRAMME) -> set:
+    """Toutes les suites de n mots des textes d'entraînement (le texte entier s'il est plus court).
+    Un énoncé de test de moins de n mots n'est donc « répétitif » que s'il figure tel quel en entraînement."""
+    vus = set()
+    for t in textes:
+        vus |= ngrammes(t, n)
+    return vus
+
+
 def comparer(reference: str, hypothese: str, lexique: list) -> dict:
     """Résultat d'un énoncé, prêt à être agrégé par agreger()."""
     r, h = mots(reference), mots(hypothese)

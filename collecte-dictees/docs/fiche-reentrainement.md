@@ -172,6 +172,9 @@ python scripts/evaluer.py $INST --modele nvidia/parakeet-tdt-0.6b-v3 \
     --modele /modeles/$NOM/<date>/checkpoints/$NOM.nemo
 ```
 
+Pour un modèle entraîné sur une fraction, indiquez son manifeste : `--train $INST/train_50.json`.
+Sinon `train.json` sert à repérer les phrases répétées.
+
 ### Critères pour mettre un modèle en service
 
 Tous doivent être remplis.
@@ -179,6 +182,7 @@ Tous doivent être remplis.
 | Critère | Où le lire |
 | --- | --- |
 | L'écart de « WER hors commandes » est négatif et son intervalle ne contient pas 0, sur `test_voix_nouvelles` et sur `test_historique` | Ligne « écart avec la référence » |
+| Sur `test_historique`, l'écart des « phrases nouvelles » est lui aussi négatif : le gain ne vient pas seulement des phrases types répétées de l'entraînement | Ligne « WER phrases nouvelles », et son écart |
 | Aucune hausse des erreurs de négation, de latéralité ou de nombres, sur aucun jeu | Lignes « Négation fausse », « Latéralité fausse », « Nombres faux » |
 | Rappel des commandes de 95 % ou plus | Ligne « Commandes : rappel » |
 | Rappel des termes rares et des paires dangereuses en hausse | Lignes « Termes » |

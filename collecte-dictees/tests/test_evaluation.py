@@ -92,3 +92,42 @@ def test_script_complet_sans_gpu(tmp_path, capsys):
     texte = evaluer.tableau(rapport)
     assert "jeu petit" in texte and "Latéralité fausse" in texte and "écart avec la référence" in texte
     json.dumps(rapport)                                          # sérialisable
+
+
+def test_recouvrement_avec_l_entrainement():
+    vus = EV.ngrammes_entrainement(["foie de taille normale sans lésion focale point",
+                                    "absence de pneumothorax point"])
+    assert EV.recouvrement("foie de taille normale sans lésion focale virgule", vus) == 1.0   # commandes ignorées
+    assert EV.recouvrement("nodule spiculé du quadrant supéro-externe gauche point", vus) == 0.0
+    # 6 suites de 5 mots, dont les 3 premières viennent de la phrase type : moitié répétée.
+    assert EV.recouvrement("foie de taille normale sans lésion focale et nodule spiculé", vus) == 0.5
+    assert EV.recouvrement("absence de pneumothorax", vus) == 1.0                            # court : tel quel
+    assert EV.recouvrement("absence d'épanchement", vus) == 0.0
+
+
+def test_gain_limite_aux_phrases_types_reperes():
+    """Un modèle qui n'a appris que les phrases types : gain global, aucun gain sur les phrases nouvelles."""
+    type_ = "foie de taille normale sans lésion focale point"
+    nouvelles = ["nodule spiculé du quadrant supéro-externe gauche point", "kyste anéchogène du rein droit point"]
+    lignes = [{"audio_filepath": f"/a/{k}.wav", "duration": 3.0, "text": t, "code": f"dr{k % 4}",
+               "id_phrase": f"p{k}", "type": "phrase"}
+              for k, t in enumerate([type_] * 8 + nouvelles * 4)]
+    erreur = {type_: "foie de taille normal sans lésion focal",
+              nouvelles[0]: "nodule spéculé du cadran supéro-externe gauche",
+              nouvelles[1]: "kyste à néchogène du rein droit"}
+    base = {l["audio_filepath"]: erreur[l["text"]] for l in lignes}
+    affine = {l["audio_filepath"]: (l["text"] if l["text"] == type_ else erreur[l["text"]]) for l in lignes}
+    vus = EV.ngrammes_entrainement([type_, "absence de pneumothorax point"])
+    r = evaluer.evaluer({"test_historique": lignes}, {"base": base, "affine": affine}, LEXIQUE, vus)
+    bloc = r["ensembles"]["test_historique"]
+    m = bloc["mesures"]["affine"]
+    assert bloc["enonces_nouveaux"] == 8
+    assert m["ecart_wer_hors_commandes"] < 0                       # le gain global paraît réel...
+    assert m["ecart_wer_nouveaux"] == 0                            # ...mais rien sur les phrases nouvelles
+    assert bloc["detail"][0]["recouvrement"] == 1.0
+    texte = evaluer.tableau(r)
+    assert "WER phrases nouvelles (8)" in texte
+    # Sans manifeste d'entraînement : pas de ligne, pas de champ.
+    sans = evaluer.evaluer({"test_historique": lignes}, {"base": base}, LEXIQUE)
+    assert "enonces_nouveaux" not in sans["ensembles"]["test_historique"]
+    assert "phrases nouvelles" not in evaluer.tableau(sans)
