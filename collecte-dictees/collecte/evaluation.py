@@ -12,6 +12,7 @@ même forme parlée et en minuscules (« 12 x 8 mm. » -> « 12 fois 8 millimèt
 Les intervalles de confiance sont obtenus par rééchantillonnage (bootstrap) des GROUPES — voix pour
 les lectures, dictée pour les dictées réelles — car les énoncés d'une même voix ne sont pas indépendants.
 """
+import difflib
 import random
 import re
 from collections import Counter, defaultdict
@@ -178,3 +179,27 @@ def intervalle(resultats: list, groupes: list, cle: str = "erreurs_hc", cle_n: s
     if not valeurs:
         return None
     return valeurs[int(0.025 * (len(valeurs) - 1))], valeurs[int(0.975 * (len(valeurs) - 1))]
+
+
+def ecarts_html(reference: str, hypothese: str) -> tuple:
+    """Pour l'onglet « À vérifier » : (référence, hypothèse) en HTML, mots différents entourés de
+    <mark class="ecart">, et nombre d'écarts. Les commandes dictées ne sont pas marquées : le modèle de
+    base écrit « . » au lieu de « point », ce serait du bruit à chaque ligne."""
+    import html as _html
+    jr, jh = E.jetons(reference or "", ecrit=True), E.jetons(hypothese or "", ecrit=True)
+    rn, hn = [n for n, _ in jr], [n for n, _ in jh]
+    cmd_r, cmd_h = E._marquer_commandes(rn)[0], E._marquer_commandes(hn)[0]
+    ra = [i for i in range(len(rn)) if i not in cmd_r]
+    ha = [j for j in range(len(hn)) if j not in cmd_h]
+    marques_r, marques_h, ecarts = set(), set(), 0
+    sm = difflib.SequenceMatcher(None, [rn[i] for i in ra], [hn[j] for j in ha], autojunk=False)
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op != "equal":
+            ecarts += 1
+            marques_r.update(ra[i1:i2])
+            marques_h.update(ha[j1:j2])
+
+    def rendre(jets, marques):
+        return " ".join(f'<mark class="ecart">{_html.escape(a)}</mark>' if k in marques else _html.escape(a)
+                        for k, (_, a) in enumerate(jets))
+    return rendre(jr, marques_r), rendre(jh, marques_h), ecarts

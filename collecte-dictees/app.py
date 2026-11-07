@@ -27,6 +27,7 @@ import streamlit as st
 
 from collecte import VERSION_APP
 from collecte import audio as A
+from collecte import evaluation as EV
 from collecte import importation as I
 from collecte import jeux as J
 from collecte import travail as TR
@@ -49,6 +50,11 @@ st.markdown("""
 .carte-meta { opacity: 0.75; font-size: 0.95rem; margin-bottom: 0.2rem; }
 .cmd { color: #E0A43A; font-variant: small-caps; letter-spacing: 0.02em;
   border-bottom: 1px dotted #E0A43A; }
+.carte-id { opacity: 0.5; font-size: 0.8rem; margin-left: 0.4rem; }
+.etape { color: #E0A43A; font-weight: 600; margin-right: 0.3rem; }
+mark.ecart { background: rgba(224,164,58,0.28); color: inherit; padding: 0 0.15rem; border-radius: 3px; }
+.comparaison { line-height: 1.7; margin: 0.2rem 0 0.8rem 0; }
+.comparaison b { opacity: 0.8; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -64,6 +70,17 @@ def secret(nom, defaut=None):
 
 def maintenant() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def duree_lisible(secondes: float) -> str:
+    """« 45 s », « 12 min », « 3 h 05 » : plus parlant que « 0.03 h »."""
+    secondes = float(secondes or 0)
+    if secondes < 60:
+        return f"{secondes:.0f} s"
+    if secondes < 3600:
+        return f"{secondes / 60:.0f} min"
+    h, reste = divmod(int(round(secondes / 60)), 60)
+    return f"{h} h {reste:02d}"
 
 
 @st.cache_resource
@@ -197,7 +214,8 @@ TEXTE_CONSENTEMENT = (
 
 def ecran_consentement(code: str) -> None:
     st.subheader("Consentement")
-    st.markdown(TEXTE_CONSENTEMENT)
+    phrases = [p.strip() for p in TEXTE_CONSENTEMENT.split(". ") if p.strip()]
+    st.markdown("\n".join(f"- {p.rstrip('.')}." for p in phrases))
     ok = st.checkbox("J'accepte que ma voix soit enregistrée pour ce projet, dans ces conditions.")
     if st.button("Valider mon consentement", type="primary", disabled=not ok):
         ecrire_json(stockage(), f"consentements/{code}.json",
@@ -284,9 +302,8 @@ def page_enregistrer(ident: dict) -> None:
     seance_faites = st.session_state.get("faites_seance", 0)
 
     st.title("Lisez le texte" if type_ == "phrase" else "Dictez ce compte rendu")
-    st.progress(min(seance_faites / objectif, 1.0),
-                text=f"Séance : {seance_faites} sur un objectif de {objectif} · "
-                     f"au total {faites} sur {total} dans cette sélection")
+    st.progress(min(seance_faites / objectif, 1.0), text=f"Séance : {seance_faites} / {objectif}")
+    st.caption(f"Dans cette sélection : {faites} texte(s) enregistré(s) sur {total}.")
     if msg := st.session_state.pop("message", None):
         st.success(msg)
 
@@ -300,18 +317,23 @@ def page_enregistrer(ident: dict) -> None:
 
     affichage = T.surligner_commandes(html.escape(phrase["texte"]))
     classe = "carte-phrase carte-cr" if type_ == "compte_rendu" else "carte-phrase"
-    st.markdown(f'<div class="carte-meta">{html.escape(phrase["modalite"])} · {html.escape(phrase["id"])}</div>'
+    st.markdown(f'<div class="carte-meta">{html.escape(phrase["modalite"])}'
+                f'<span class="carte-id">{html.escape(phrase["id"])}</span></div>'
                 f'<div class="{classe}">{affichage}</div>', unsafe_allow_html=True)
     st.caption("Les mots en couleur sont des commandes de ponctuation : dictez-les comme d'habitude."
                + (" Dictez à votre rythme naturel, comme en vacation." if type_ == "compte_rendu" else ""))
 
     cle = f"audio_{st.session_state.get('compteur', 0)}"
-    enregistrement = st.audio_input("Appuyez sur le micro, lisez le texte, puis arrêtez.", key=cle)
+    st.markdown('<span class="etape">1</span>Appuyez sur le micro, lisez le texte, puis arrêtez.',
+                unsafe_allow_html=True)
+    enregistrement = st.audio_input("Enregistrement", key=cle, label_visibility="collapsed")
     with st.expander("J'ai lu un peu différemment"):
         st.caption("Corrigez le texte pour qu'il corresponde exactement à ce que vous avez dit, "
                    "commandes comprises. Si l'écart est important, recommencez plutôt l'enregistrement.")
         texte_lu = st.text_area("Texte réellement lu", value=phrase["texte"], key=f"texte_{cle}")
 
+    st.markdown('<span class="etape">2</span>' + ("Réécoutez si besoin, puis enregistrez." if enregistrement
+                 else "Le bouton s'active une fois l'enregistrement terminé."), unsafe_allow_html=True)
     c1, c2, c3 = st.columns([2, 1, 1])
     enregistrer = c1.button("Enregistrer et passer au suivant", type="primary",
                             disabled=enregistrement is None, width="stretch")
@@ -553,9 +575,14 @@ def importer_fichiers(code: str, par: str, fichiers: list, modalites: list, moda
 
 
 def corriger_dictee(code: str, index: list, modalites: list) -> None:
-    st.subheader("Corriger une dictée importée")
-    if message := st.session_state.pop("message_correction", None):
+    message = st.session_state.pop("message_correction", None)
+    if message:
         st.success(message)
+    with st.expander("Corriger ou supprimer une dictée importée", expanded=bool(message)):
+        _corriger_dictee(code, index, modalites)
+
+
+def _corriger_dictee(code: str, index: list, modalites: list) -> None:
     if TR.travail_en_cours(stockage()):
         st.info("Un étiquetage est en cours : les corrections seront possibles quand il sera terminé.")
         return
@@ -631,7 +658,7 @@ Une séance de 20 textes prend environ 5 à 10 minutes.
 def admin_vue(df: pd.DataFrame) -> None:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Enregistrements", len(df))
-    c2.metric("Durée totale", f"{df['duree_s'].sum() / 3600:.2f} h")
+    c2.metric("Durée totale", duree_lisible(df["duree_s"].sum()))
     c3.metric("Voix", df["code"].nunique())
     c4.metric("Comptes rendus", int((df["type"] == "compte_rendu").sum()))
     st.subheader("Par radiologue et par modalité")
@@ -695,9 +722,13 @@ def admin_a_verifier(journal: list) -> None:
     if audio:
         st.audio(audio, format="audio/wav")
     historique = j.get("source") == "historique"
-    st.markdown(f"**{'Texte proposé' if historique else 'Texte attendu'} :** {html.escape(j['texte_final'])}")
-    st.markdown(f"**{'Transcriptions des moteurs' if historique else 'Transcription du modèle de base'} :** "
-                f"{html.escape(r.get('hypothese', ''))}")
+    hypothese = j.get("texte_parakeet") if historique and j.get("texte_parakeet") else r.get("hypothese", "")
+    ref_html, hyp_html, n_ecarts = EV.ecarts_html(j["texte_final"], hypothese)
+    st.markdown(f'<div class="comparaison"><b>{"Texte proposé" if historique else "Texte attendu"} :</b> {ref_html}<br>'
+                f'<b>{"Parakeet" if historique else "Modèle de base"} :</b> {hyp_html}</div>', unsafe_allow_html=True)
+    if historique and j.get("texte_whisper"):
+        st.caption(f"Whisper : {j['texte_whisper']}")
+    st.caption(f"{n_ecarts} écart(s) surligné(s), commandes dictées non comptées.")
     if historique:
         st.caption("Segment d'une dictée réelle : le texte proposé combine Parakeet, Whisper et le compte rendu. "
                    "Corrigez-le pour qu'il corresponde exactement à ce qui est dit, commandes comprises.")
@@ -726,7 +757,9 @@ def admin_a_verifier(journal: list) -> None:
         texte = " ".join(corrige.split())
         err = [m for n, m in T.verifier_texte(texte, j.get("type", "phrase"),
                                               T.noms_propres_du_lexique(lexique())) if n == "erreur"]
-        if err:
+        if texte == j["texte_final"]:
+            st.info("Le texte n'a pas été modifié : s'il correspond à ce qui est dit, cliquez sur « Conforme ».")
+        elif err:
             st.error("Texte non conforme : " + " ; ".join(err))
         else:
             decider("valide_humain", texte)
@@ -819,7 +852,7 @@ def admin_dictees_reelles() -> None:
         df = pd.DataFrame(lignes)
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Dictées importées", len(df))
-        c2.metric("Durée", f"{df['durée_h'].sum():.1f} h")
+        c2.metric("Durée", duree_lisible(df["durée_h"].sum() * 3600))
         c3.metric("En attente", int((df["statut"] == "en_attente").sum()))
         c4.metric("Segments produits", int(df["segments"].sum()))
         st.dataframe(df.groupby(["code", "statut"]).agg(dictées=("statut", "size"), heures=("durée_h", "sum"),
@@ -895,6 +928,13 @@ def afficher_controle_banque() -> None:
                    f"du lexique, version {banque()[1]}.")
 
 
+def nb_a_verifier(journal: list) -> int:
+    resultats = lire_json(stockage(), J.CLE_RESULTATS, {})
+    decisions = lire_json(stockage(), J.CLE_DECISIONS, {})
+    fichiers = {j["fichier"] for j in journal}
+    return sum(1 for f, r in resultats.items() if r.get("statut") == "a_verifier" and f not in decisions and f in fichiers)
+
+
 def page_administration(ident: dict) -> None:
     st.title("Administration")
     if not ident["admin"]:
@@ -904,8 +944,9 @@ def page_administration(ident: dict) -> None:
         tous_les_journaux.clear()
     journal = tous_les_journaux()
     afficher_controle_banque()
-    onglets = st.tabs(["Vue d'ensemble", "Couverture", "À vérifier", "Enregistrements",
-                       "Dictées réelles", "Jeux de données", "Retrait de consentement"])
+    n_verif = nb_a_verifier(journal)
+    onglets = st.tabs(["Vue d'ensemble", "Couverture", f"À vérifier ({n_verif})" if n_verif else "À vérifier",
+                       "Enregistrements", "Dictées réelles", "Jeux de données", "Retrait"])
     with onglets[4]:
         admin_dictees_reelles()
     if not journal:

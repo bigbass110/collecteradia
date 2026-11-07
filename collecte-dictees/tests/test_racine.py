@@ -17,8 +17,9 @@ def test_aucune_copie_du_code_a_la_racine():
     assert len((DEPOT / "app.py").read_text(encoding="utf-8").splitlines()) < 20      # lanceur seulement
 
 
-def test_dependances_identiques_a_la_racine():
-    for nom in ("requirements.txt", "packages.txt"):
+def test_dependances_et_reglages_identiques_a_la_racine():
+    """Streamlit Cloud lit requirements.txt, packages.txt et .streamlit/config.toml à la racine du dépôt."""
+    for nom in ("requirements.txt", "packages.txt", ".streamlit/config.toml"):
         assert _lignes(DEPOT / nom) == _lignes(PROJET / nom), f"{nom} diffère entre la racine et collecte-dictees/"
 
 

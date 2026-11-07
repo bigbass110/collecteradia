@@ -50,6 +50,7 @@ Dépôt GitHub ──déploiement──▶ Streamlit Community Cloud ◀── r
 | Correction d'une dictée importée | Changer la modalité, remplacer un compte rendu mal associé (la dictée est ré-étiquetée), ou supprimer la dictée et ses segments ; impossible pendant un étiquetage |
 | Étiquetage sur GPU | Parakeet + Whisper + compte rendu ; corrections confirmées par deux sources ; texte de modèle ignoré ; passages avec nom, date ou âge exclus ; segments de 1,5 à 20 s |
 | Administration | Vue d'ensemble, couverture du lexique, à vérifier, écoute et suppression, dictées réelles, instantanés, retrait de consentement |
+| Vérification | Le texte attendu et la transcription du modèle s'affichent l'un sous l'autre, mots différents surlignés (commandes ignorées) ; le nombre de cas en attente apparaît dans l'onglet « À vérifier (N) » |
 | Ordre « À vérifier » | Par valeur : erreur critique du modèle de base (+4), terme du lexique manqué (+2 chacun, 3 au plus), correction du compte rendu à confirmer (+3), réservé au test (+2), nom propre, commande ou désaccord possible (+1) ; compte rendu mal apparié en dernier (−3) |
 
 ## Contenu du dépôt
@@ -345,6 +346,6 @@ En mode mot de passe, tout utilisateur est administrateur : ne l'utilisez jamais
   doit être validé par la CDP **avant** la collecte.
 - Les fichiers ne portent qu'un code pseudonyme ; la correspondance e-mail ↔ code n'existe que
   dans les Secrets.
-- Retrait du consentement : onglet « Retrait de consentement » (supprime enregistrements, journal,
+- Retrait du consentement : onglet « Retrait » de l'Administration (supprime enregistrements, journal,
   consentement, profil et validations), retirer le compte des Secrets, créer un nouvel instantané.
   Les modèles déjà entraînés ne peuvent pas être modifiés rétroactivement ; le consentement le précise.

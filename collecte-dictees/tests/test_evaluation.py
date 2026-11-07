@@ -131,3 +131,12 @@ def test_gain_limite_aux_phrases_types_reperes():
     sans = evaluer.evaluer({"test_historique": lignes}, {"base": base}, LEXIQUE)
     assert "enonces_nouveaux" not in sans["ensembles"]["test_historique"]
     assert "phrases nouvelles" not in evaluer.tableau(sans)
+
+
+def test_ecarts_surlignes_sans_les_commandes():
+    ref, hyp, n = EV.ecarts_html("opacité spiculée du sein gauche point", "Opacité spéculée du sein droite.")
+    assert n == 2
+    assert ref == 'opacité <mark class="ecart">spiculée</mark> du sein <mark class="ecart">gauche</mark> point'
+    assert hyp == 'Opacité <mark class="ecart">spéculée</mark> du sein <mark class="ecart">droite</mark>'
+    assert EV.ecarts_html("pas d'épanchement point", "Pas d'épanchement.")[2] == 0      # « point » absent : ignoré
+    assert "<b>" not in EV.ecarts_html("<b>x</b> y", "z")[0]                           # aucune balise ne passe

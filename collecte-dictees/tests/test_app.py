@@ -100,6 +100,8 @@ def test_onglet_a_verifier_classe_par_valeur(tmp_path, monkeypatch):
     at.sidebar.text_input[0].input("dr01").run(timeout=60)
     at.sidebar.radio[0].set_value("Administration").run(timeout=60)
     assert not at.exception
+    assert any(t.label == "À vérifier (2)" for t in at.tabs)          # travail en attente visible
+    assert any('<mark class="ecart">spéculée</mark>' in m.value for m in at.markdown)
     choix = next(s for s in at.selectbox if s.label == "Enregistrement à vérifier")
     assert choix.options[0].startswith("+6 · terme manqué : spiculée")
     assert choix.options[1].startswith("+0 · écart global")
@@ -186,7 +188,7 @@ def test_corriger_puis_supprimer_une_dictee_importee(tmp_path, monkeypatch):
     ident, _ = I.enregistrer(s, "dr01", A.en_wav(np.full(A.FREQ * 6, 0.01, dtype="float32")), 6.0,
                              "Pas d'adénopathie.", "Sénologie", "radiologue")
     at = _connecter(projet)
-    assert "Corriger une dictée importée" in [h.value for h in at.subheader]
+    assert [e.label for e in at.expander if e.label.startswith("Corriger")] == ["Corriger ou supprimer une dictée importée"]
     at.selectbox(key=f"corr_mod_{ident}").set_value("Thorax").run(timeout=60)
     next(b for b in at.button if b.label == "Enregistrer la modalité").click().run(timeout=60)
     assert I.index_de(s, "dr01")[0]["modalite"] == "Thorax"
@@ -228,3 +230,13 @@ def test_bouton_importer_toujours_visible_avec_la_raison(tmp_path, monkeypatch):
     at.text_area(key="import_0_colle_0").input("Pas d'adénopathie axillaire.").run(timeout=60)
     bouton = next(b for b in at.button if b.label.startswith("Importer"))
     assert bouton.label == "Importer 1 dictée(s)" and not bouton.disabled
+
+
+def test_duree_lisible():
+    import re
+    source = (RACINE / "app.py").read_text()
+    code = re.search(r"def duree_lisible.*?\n(?=\n\n)", source, re.S).group(0)
+    espace = {}
+    exec(code, espace)
+    f = espace["duree_lisible"]
+    assert [f(45), f(125), f(3600 * 3 + 300), f(None)] == ["45 s", "2 min", "3 h 05", "0 s"]
