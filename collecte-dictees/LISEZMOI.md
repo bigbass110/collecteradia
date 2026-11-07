@@ -49,6 +49,7 @@ Dépôt GitHub ──déploiement──▶ Streamlit Community Cloud ◀── r
 | Import de dictées réelles | Paires audio + compte rendu (txt, docx, pdf), associées par nom de fichier ; noms d'origine jamais conservés ; doublons refusés |
 | Étiquetage sur GPU | Parakeet + Whisper + compte rendu ; corrections confirmées par deux sources ; texte de modèle ignoré ; passages avec nom, date ou âge exclus ; segments de 1,5 à 20 s |
 | Administration | Vue d'ensemble, couverture du lexique, à vérifier, écoute et suppression, dictées réelles, instantanés, retrait de consentement |
+| Ordre « À vérifier » | Par valeur : erreur critique du modèle de base (+4), terme du lexique manqué (+2 chacun, 3 au plus), correction du compte rendu à confirmer (+3), réservé au test (+2), nom propre, commande ou désaccord possible (+1) ; compte rendu mal apparié en dernier (−3) |
 
 ## Contenu du dépôt
 

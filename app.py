@@ -582,8 +582,17 @@ def admin_a_verifier(journal: list) -> None:
              "par la validation automatique (scripts/valider_enregistrements.py).")
     if not a_voir:
         return
-    fichier = st.selectbox("Enregistrement à vérifier", a_voir)
+    classes = J.trier_a_verifier(a_voir, par_fichier, resultats, lexique())
+    infos = {f: (points, motifs) for f, points, motifs in classes}
+    st.caption("Classés par valeur : d'abord les erreurs critiques du modèle de base, les termes du lexique "
+               "qu'il a manqués et les corrections du compte rendu à confirmer ; en dernier, les comptes "
+               "rendus peut-être mal appariés.")
+    fichier = st.selectbox(
+        "Enregistrement à vérifier", [f for f, _, _ in classes],
+        format_func=lambda f: f"{infos[f][0]:+d} · {(infos[f][1] or ['écart global'])[0]} · {Path(f).stem}")
     j, r = par_fichier[fichier], resultats[fichier]
+    if infos[fichier][1]:
+        st.caption("Pourquoi ici : " + " · ".join(infos[fichier][1]))
     audio = stockage().lire(fichier)
     if audio:
         st.audio(audio, format="audio/wav")

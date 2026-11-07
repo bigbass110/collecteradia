@@ -42,3 +42,42 @@ def test_couverture_compte_les_voix_distinctes():
     j = [entree("dr01", "a", texte="BI-RADS 4"), entree("dr01", "b", texte="BI-RADS 2"),
          entree("dr02", "a", texte="BI-RADS 4")]
     assert J.couverture(j, lex) == {"BI-RADS": 2}
+
+
+LEXIQUE = T.lire_lexique("terme,categorie\nspiculée,terme_rare\nBI-RADS,score\ngauche,lateralite\n".encode())
+
+
+def test_valeur_verification():
+    lecture = {"texte_final": "opacité spiculée du sein gauche point", "duree_s": 3.0}
+    # Parakeet de base a manqué « spiculée » et s'est trompé de côté.
+    pts, motifs = J.valeur_verification(lecture, {"raisons": ["latéralité"], "hypothese": "Opacité spéculée du sein droit."},
+                                        LEXIQUE)
+    assert pts == 4 + 2 and motifs == ["terme manqué : spiculée", "erreur critique du modèle de base"]
+    # Seul un écart global : aucune valeur particulière.
+    assert J.valeur_verification(lecture, {"raisons": ["CER > 25%"], "hypothese": "opacité spiculée du sein gauche"},
+                                 LEXIQUE) == (0, [])
+    # Segment de dictée réelle : la transcription de Parakeet est dans le journal.
+    seg = {"texte_final": "nodule classé BI-RADS 4 point", "texte_parakeet": "nodule classé bi rads 4"}
+    pts, motifs = J.valeur_verification(seg, {"raisons": ["correction « bi » → « BI-RADS » non confirmée ; "
+                                                          "réservé au test : relecture intégrale"]}, LEXIQUE)
+    assert pts == 2 + 3 + 2 and "réservé au test" in motifs
+    # Compte rendu mal apparié : relégué en fin de liste.
+    assert J.valeur_verification(seg | {"texte_parakeet": "nodule classé BI-RADS 4"},
+                                 {"raisons": ["compte rendu peut-être mal apparié (concordance 12%)"]}, LEXIQUE)[0] == -3
+
+
+def test_tri_a_verifier_par_valeur_puis_duree():
+    par_fichier = {
+        "a.wav": {"texte_final": "foie normal point", "duree_s": 2.0},
+        "b.wav": {"texte_final": "opacité spiculée point", "duree_s": 9.0},
+        "c.wav": {"texte_final": "foie normal point", "duree_s": 1.0},
+        "d.wav": {"texte_final": "foie normal point", "duree_s": 1.0},
+    }
+    resultats = {
+        "a.wav": {"raisons": ["CER > 25%"], "hypothese": "foie normal"},
+        "b.wav": {"raisons": ["CER > 25%"], "hypothese": "opacité spéculée"},
+        "c.wav": {"raisons": ["CER > 25%"], "hypothese": "foie normal"},
+        "d.wav": {"raisons": ["compte rendu peut-être mal apparié"], "hypothese": "foie normal"},
+    }
+    ordre = [f for f, _, _ in J.trier_a_verifier(list(par_fichier), par_fichier, resultats, LEXIQUE)]
+    assert ordre == ["b.wav", "c.wav", "a.wav", "d.wav"]

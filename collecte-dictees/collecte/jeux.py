@@ -95,3 +95,48 @@ def creer_instantane(stockage, journal: list, test_locuteurs: set, version_banqu
 def lister_instantanes(stockage) -> list:
     noms = {c.split("/")[1] for c in stockage.lister("manifestes/") if c.count("/") >= 2}
     return sorted(noms, reverse=True)
+
+
+# ─────────────────────────── Ordre de l'onglet « À vérifier » ───────────────────────────
+
+# (points, motif affiché, mots repérés dans les raisons). Les cas qui apprennent le plus au modèle,
+# ou sans lesquels un jeu de test reste incomplet, passent en premier ; un compte rendu mal apparié,
+# qui fera surtout perdre du temps, passe en dernier.
+VALEURS = [
+    (4, "erreur critique du modèle de base", ("négation", "latéralité", "nombres")),
+    (3, "correction du compte rendu à confirmer", ("correction « ", "correction de groupe")),
+    (2, "réservé au test", ("réservé au test",)),
+    (1, "nom propre possible", ("nom propre possible",)),
+    (1, "commande dictée possible", ("ponctuation « ",)),
+    (1, "désaccord entre sources", ("désaccord avec le compte rendu", "mot entendu par un seul moteur")),
+    (-3, "compte rendu peut-être mal apparié", ("mal apparié",)),
+]
+POINTS_TERME, TERMES_MAX = 2, 3
+_NON_CIBLES = {"commande", "unite", "negation", "lateralite"}
+
+
+def valeur_verification(entree: dict, resultat: dict, lexique: list) -> tuple:
+    """Renvoie (points, [motifs]) d'un enregistrement à vérifier. Chaque terme du lexique présent dans
+    le texte mais absent de la transcription de Parakeet vaut des points : c'est précisément ce que le
+    ré-entraînement doit apprendre."""
+    raisons = " ; ".join(resultat.get("raisons", []))
+    points, motifs = 0, []
+    for p, motif, mots in VALEURS:
+        if any(m in raisons for m in mots):
+            points += p
+            motifs.append(motif)
+    hypothese = entree.get("texte_parakeet") or resultat.get("hypothese", "")
+    categorie = {l["terme"]: l["categorie"] for l in lexique}
+    manques = sorted(t for t in termes_de(entree.get("texte_final", ""), lexique) - termes_de(hypothese, lexique)
+                     if categorie.get(t) not in _NON_CIBLES)
+    if manques:
+        points += POINTS_TERME * min(len(manques), TERMES_MAX)
+        motifs.insert(0, "terme manqué : " + ", ".join(manques[:TERMES_MAX]))
+    return points, motifs
+
+
+def trier_a_verifier(fichiers: list, par_fichier: dict, resultats: dict, lexique: list) -> list:
+    """[(fichier, points, motifs)] du plus utile au moins utile ; à valeur égale, les plus courts
+    d'abord (plus vite vérifiés), puis par nom pour un ordre stable."""
+    lignes = [(f, *valeur_verification(par_fichier[f], resultats[f], lexique)) for f in fichiers]
+    return sorted(lignes, key=lambda x: (-x[1], float(par_fichier[x[0]].get("duree_s", 0)), x[0]))

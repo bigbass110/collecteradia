@@ -54,6 +54,7 @@ def test_banque_hors_convention_bloquee_et_signalee(tmp_path, monkeypatch):
     monkeypatch.chdir(projet)
     import streamlit as st
     st.cache_data.clear()                             # banque() est en cache depuis le test précédent
+    st.cache_resource.clear()
     at = AppTest.from_file(str(projet / "app.py")).run(timeout=60)
     at.text_input[0].input("x").run(timeout=60)
     at.sidebar.text_input[0].input("dr96").run(timeout=60)
@@ -65,3 +66,41 @@ def test_banque_hors_convention_bloquee_et_signalee(tmp_path, monkeypatch):
     at.sidebar.radio[0].set_value("Administration").run(timeout=60)
     assert not at.exception
     assert any("2 erreur(s) de convention" in e.value and "1 texte(s)" in e.value for e in at.error)
+
+
+def test_onglet_a_verifier_classe_par_valeur(tmp_path, monkeypatch):
+    import json
+    import shutil
+
+    import streamlit as st
+    projet = tmp_path / "projet"
+    shutil.copytree(RACINE / "collecte", projet / "collecte")
+    for f in ("app.py", "lexique.csv", "phrases.csv"):
+        shutil.copy(RACINE / f, projet / f)
+    (projet / ".streamlit").mkdir()
+    (projet / ".streamlit" / "secrets.toml").write_text('MODE_ACCES="mot_de_passe"\nSTOCKAGE="local"\nAPP_PASSWORD="x"\n')
+    donnees = projet / "donnees"
+    (donnees / "journaux").mkdir(parents=True)
+    (donnees / "validations").mkdir()
+    journal = [{"code": "dr01", "id_phrase": f"p{k}", "type": "phrase", "fichier": f"brut/dr01_p{k}.wav",
+                "duree_s": 3.0, "texte_final": t, "horodatage": "2026-11-07T10:00:00+00:00",
+                "modalite": "Sénologie", "micro": "Micro de dictée", "lieu": "Salle de lecture"}
+               for k, t in enumerate(["foie de taille normale point", "opacité spiculée du sein gauche point"])]
+    (donnees / "journaux" / "dr01.json").write_text(json.dumps(journal))
+    (donnees / "validations" / "resultats.json").write_text(json.dumps({
+        "brut/dr01_p0.wav": {"statut": "a_verifier", "raisons": ["CER > 25%"], "hypothese": "foie de taille", "cer": 0.4},
+        "brut/dr01_p1.wav": {"statut": "a_verifier", "raisons": ["latéralité"], "cer": 0.3,
+                             "hypothese": "Opacité spéculée du sein droit."},
+    }))
+    monkeypatch.chdir(projet)
+    st.cache_data.clear()
+    st.cache_resource.clear()                         # stockage() pointe sinon vers le test précédent
+    at = AppTest.from_file(str(projet / "app.py")).run(timeout=60)
+    at.text_input[0].input("x").run(timeout=60)
+    at.sidebar.text_input[0].input("dr01").run(timeout=60)
+    at.sidebar.radio[0].set_value("Administration").run(timeout=60)
+    assert not at.exception
+    choix = next(s for s in at.selectbox if s.label == "Enregistrement à vérifier")
+    assert choix.options[0].startswith("+6 · terme manqué : spiculée")
+    assert choix.options[1].startswith("+0 · écart global")
+    assert any("Pourquoi ici" in c.value and "erreur critique" in c.value for c in at.caption)
