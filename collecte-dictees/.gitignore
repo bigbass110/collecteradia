@@ -3,3 +3,5 @@ donnees/
 __pycache__/
 .pytest_cache/
 *.tmp
+candidats_lexique.csv
+phrases_proposees.csv

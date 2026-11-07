@@ -243,6 +243,35 @@ python scripts/construire_lexique.py --ajouter    # ajoute aussi les candidats �
 - Ensuite : ajoutez des phrases qui contiennent les nouveaux termes (`verifier_phrases.py` signale
   les termes sans phrase). La sélection intelligente de l'application les proposera en priorité.
 
+## Générer des phrases depuis les comptes rendus
+
+Les comptes rendus importés contiennent le vrai vocabulaire des radiologues. Le script en tire des
+phrases courtes, réécrites selon la convention (« 12 x 8 mm, » -> « 12 fois 8 millimètres virgule »),
+pour enrichir `phrases.csv` :
+
+```bash
+python scripts/generer_phrases.py --candidats candidats_lexique.csv     # 1. proposer
+#                                                                         2. relire phrases_proposees.csv
+python scripts/generer_phrases.py --integrer phrases_proposees.csv      # 3. intégrer, puis git push
+```
+
+- Sources : les comptes rendus importés dans l'application (par défaut), ou un dossier de fichiers
+  `.txt`, `.docx`, `.pdf` (`--dossier ~/comptes_rendus --modalite Thorax`).
+- **Une phrase est rejetée, jamais corrigée, au moindre doute** : ligne d'en-tête, nom trouvé dans
+  l'en-tête, date, âge, civilité, numéro long, e-mail, mot à majuscule qui n'est ni un sigle ni un
+  éponyme du lexique, symbole sans forme parlée sûre (%, /, °), abréviation. Le bilan affiche les
+  rejets par motif.
+- Les phrases qui couvrent des termes du lexique passent en premier, au plus 5 par terme
+  (`--max-par-terme`). Avec `--candidats`, les termes que Parakeet manque le plus comptent davantage.
+  Le reste est complété par des phrases sans terme ciblé, pour la diversité (`--max`, 200 par défaut).
+- L'identifiant (`g` + 8 caractères) est dérivé du texte : une phrase régénérée garde le même
+  identifiant, donc le même ensemble.
+- **Relecture obligatoire par un radiologue** avant l'intégration : supprimer les phrases fausses,
+  douteuses ou trop proches d'un patient précis. `--integrer` revérifie chaque ligne (convention,
+  identifiant, doublon, virgule non protégée qui couperait le texte).
+- `phrases_proposees.csv` contient des extraits de comptes rendus : il est ignoré par Git ;
+  supprimez-le après l'intégration.
+
 ## Banque de textes
 
 - Éditez `phrases.csv` et `lexique.csv`, puis `git push` : GitHub Actions refuse l'envoi si un

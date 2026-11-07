@@ -5,3 +5,4 @@ candidats_lexique.csv
 __pycache__/
 .pytest_cache/
 *.tmp
+phrases_proposees.csv
