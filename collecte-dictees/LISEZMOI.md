@@ -28,7 +28,9 @@ Dépôt GitHub ──déploiement──▶ Streamlit Community Cloud ◀── r
    conforme, corrigé ou rejeté.
 4. **Figer** : onglet « Jeux de données » → **Créer un instantané**. Il n'est jamais modifié.
 5. **Entraîner** : `scripts/telecharger_donnees.py` récupère l'instantané ; on entraîne avec la
-   fiche de ré-entraînement en citant le nom de l'instantané.
+   [fiche de ré-entraînement](docs/fiche-reentrainement.md) en citant le nom de l'instantané.
+6. **Évaluer et décider** : `scripts/evaluer.py` compare le modèle ré-entraîné à Parakeet de base ;
+   les critères de mise en service sont dans la fiche.
 
 ## Ce que fait l'application
 
@@ -60,9 +62,14 @@ Dépôt GitHub ──déploiement──▶ Streamlit Community Cloud ◀── r
 | `scripts/verifier_phrases.py` | Correcteur de la banque (lancé par GitHub Actions) |
 | `scripts/valider_enregistrements.py` | Validation automatique avec Parakeet de base (machine GPU) |
 | `scripts/telecharger_donnees.py` | Téléchargement d'un instantané, sous-ensembles pour la courbe d'apprentissage |
+| `scripts/evaluer.py` | Évaluation d'un ou plusieurs modèles sur les jeux de test (WER, erreurs critiques, termes) |
+| `scripts/construire_lexique.py` | Propositions de lexique à partir des erreurs réelles de Parakeet |
+| `scripts/generer_phrases.py` | Phrases à lire tirées des comptes rendus, puis intégration après relecture |
+| `.githooks/pre-push` (racine du dépôt) | Vérification de la banque et tests avant chaque envoi |
 | `tests/` | Tests automatiques (`pytest`) |
 | `docs/convention-ecriture.md` | La règle d'écriture, source unique |
 | `docs/recolte-radia.md` | Spécification de la récolte des dictées réelles depuis RadIA |
+| `docs/fiche-reentrainement.md` | Ré-entraînement de Parakeet avec NeMo : réglages, commandes, critères de mise en service, registre |
 | `.github/workflows/verifications.yml` | Vérifie la banque et lance les tests à chaque envoi |
 
 ## Mise en ligne
