@@ -5,6 +5,15 @@ from streamlit.testing.v1 import AppTest
 RACINE = Path(__file__).resolve().parents[1]
 
 
+def aller(at, page: str):
+    """Ouvre une page de la navigation (adresse : enregistrer, importer, consignes, administration).
+    AppTest.switch_page ne connaît que les pages en fichiers : on lui donne directement l'empreinte de
+    l'adresse, calculée comme Streamlit le fait pour les pages en fonctions."""
+    from streamlit.util import calc_md5
+    at._page_hash = calc_md5(page)
+    return at.run(timeout=60)
+
+
 def test_parcours_local(tmp_path, monkeypatch):
     monkeypatch.chdir(RACINE)
     secrets = RACINE / ".streamlit" / "secrets.toml"
@@ -21,10 +30,10 @@ def test_parcours_local(tmp_path, monkeypatch):
         at.button[0].click().run(timeout=60)          # « Commencer la séance »
         assert at.title[0].value == "Lisez le texte"
         assert not at.exception
-        at.sidebar.radio[0].set_value("Importer des dictées").run(timeout=60)
+        aller(at, "importer")
         assert at.title[0].value == "Importer des dictées"
         assert not at.exception
-        at.sidebar.radio[0].set_value("Administration").run(timeout=60)
+        aller(at, "administration")
         assert not at.exception
         assert any("MODAL_URL" in i.value for i in at.info)       # onglet Dictées réelles sans GPU configuré
         assert any("Banque de textes conforme" in c.value for c in at.caption)
@@ -63,7 +72,7 @@ def test_banque_hors_convention_bloquee_et_signalee(tmp_path, monkeypatch):
     at.button[0].click().run(timeout=60)              # « Commencer la séance »
     page = " ".join(m.value for m in at.markdown)
     assert "absence de pneumothorax" in page and "12 mm" not in page
-    at.sidebar.radio[0].set_value("Administration").run(timeout=60)
+    aller(at, "administration")
     assert not at.exception
     assert any("2 erreur(s) de convention" in e.value and "1 texte(s)" in e.value for e in at.error)
 
@@ -98,7 +107,7 @@ def test_onglet_a_verifier_classe_par_valeur(tmp_path, monkeypatch):
     at = AppTest.from_file(str(projet / "app.py")).run(timeout=60)
     at.text_input[0].input("x").run(timeout=60)
     at.sidebar.text_input[0].input("dr01").run(timeout=60)
-    at.sidebar.radio[0].set_value("Administration").run(timeout=60)
+    aller(at, "administration")
     assert not at.exception
     assert any(t.label == "À vérifier (2)" for t in at.tabs)          # travail en attente visible
     assert any('<mark class="ecart">spéculée</mark>' in m.value for m in at.markdown)
@@ -133,7 +142,7 @@ def _connecter(projet, code="dr01"):
     at = AppTest.from_file(str(projet / "app.py")).run(timeout=60)
     at.text_input[0].input("x").run(timeout=60)
     at.sidebar.text_input[0].input(code).run(timeout=60)
-    at.sidebar.radio[0].set_value("Importer des dictées").run(timeout=60)
+    aller(at, "importer")
     return at
 
 

@@ -974,15 +974,17 @@ def page_administration(ident: dict) -> None:
 
 # ─────────────────────────── Navigation ───────────────────────────
 
+# Navigation en haut de page (menu replié sur téléphone). Chaque page a son adresse : /enregistrer,
+# /importer, /consignes, /administration. L'Administration n'existe que pour les coordinateurs.
+PAGES = [("enregistrer", "Enregistrer", ":material/mic:"),
+         ("importer", "Importer des dictées", ":material/upload_file:"),
+         ("consignes", "Consignes", ":material/menu_book:"),
+         ("administration", "Administration", ":material/admin_panel_settings:")]
+
 ident = identifier()
 if ident:
-    pages = ["Enregistrer", "Importer des dictées", "Consignes"] + (["Administration"] if ident["admin"] else [])
-    page = st.sidebar.radio("Navigation", pages)
-    if page == "Enregistrer":
-        page_enregistrer(ident)
-    elif page == "Importer des dictées":
-        page_importer(ident)
-    elif page == "Consignes":
-        page_consignes()
-    else:
-        page_administration(ident)
+    actions = {"enregistrer": lambda: page_enregistrer(ident), "importer": lambda: page_importer(ident),
+               "consignes": page_consignes, "administration": lambda: page_administration(ident)}
+    pages = [st.Page(actions[chemin], title=titre, icon=icone, url_path=chemin, default=chemin == "enregistrer")
+             for chemin, titre, icone in PAGES if chemin != "administration" or ident["admin"]]
+    st.navigation(pages, position="top").run()

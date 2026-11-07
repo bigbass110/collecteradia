@@ -36,6 +36,7 @@ Dépôt GitHub ──déploiement──▶ Streamlit Community Cloud ◀── r
 
 | Fonction | Détail |
 | --- | --- |
+| Navigation | En haut de page, avec icônes (dans le menu latéral sur téléphone) ; une adresse par page : la racine pour « Enregistrer », puis `/importer`, `/consignes`, `/administration` (coordinateurs seulement) |
 | Commandes de ponctuation | Affichées en couleur dans le texte, dictées et transcrites en toutes lettres (voir `docs/convention-ecriture.md`) |
 | Deux types de lecture | Phrases courtes (1 à 20 s) ; comptes rendus complets (jusqu'à 6 min), réservés au test réaliste |
 | Séance | Micro et lieu déclarés au début (langue maternelle facultative), objectif de textes affiché |
