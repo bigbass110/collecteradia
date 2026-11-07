@@ -65,6 +65,7 @@ Dépôt GitHub ──déploiement──▶ Streamlit Community Cloud ◀── r
 | `scripts/evaluer.py` | Évaluation d'un ou plusieurs modèles sur les jeux de test (WER, erreurs critiques, termes) |
 | `scripts/construire_lexique.py` | Propositions de lexique à partir des erreurs réelles de Parakeet |
 | `scripts/generer_phrases.py` | Phrases à lire tirées des comptes rendus, puis intégration après relecture |
+| `scripts/preparer_general.py` | Français général (Common Voice, MLS) à la convention, mélangé à l'entraînement ; jeu de régression |
 | `.githooks/pre-push` (racine du dépôt) | Vérification de la banque et tests avant chaque envoi |
 | `tests/` | Tests automatiques (`pytest`) |
 | `docs/convention-ecriture.md` | La règle d'écriture, source unique |

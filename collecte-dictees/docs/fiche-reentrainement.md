@@ -15,7 +15,8 @@ registre (dernière section).
 
 ```bash
 python scripts/telecharger_donnees.py /data/radia --fractions 0.25,0.5
-cat /data/radia/<instantane>/resume.json
+export INST=/data/radia/<instantane>
+cat $INST/resume.json
 ```
 
 Dans `resume.json`, vérifiez avant d'aller plus loin :
@@ -33,11 +34,26 @@ Les jeux de test d'un instantané ne servent qu'à `evaluer.py`.
 ### Données générales (recommandé)
 
 Un modèle ré-entraîné uniquement sur de la radiologie peut se dégrader sur le reste du français
-(« oubli »). Ajoutez à `train.json` environ **20 à 30 %** (en heures) de français général, par exemple
-Common Voice ou Multilingual LibriSpeech, **ramené à la même convention** : minuscules, sans
-ponctuation, nombres en chiffres. Écartez les énoncés qui contiennent des nombres écrits en lettres,
-car la convention exige des chiffres. Gardez de côté 300 énoncés généraux non entraînés : ils
-serviront à vérifier l'absence de régression (étape 5).
+(« oubli »). On ajoute donc **20 à 30 %** (en heures) de français général, ramené à la même
+convention :
+
+```bash
+# Common Voice français (dossier contenant clips/ et train.tsv)
+python scripts/preparer_general.py $INST --format cv --source ~/cv-corpus/fr
+# ou Multilingual LibriSpeech français (dossier contenant transcripts.txt et audio/)
+python scripts/preparer_general.py $INST --format mls --source ~/mls_french/train
+```
+
+Le script :
+- met le texte en minuscules sans ponctuation, et **rejette** tout énoncé avec un chiffre, un nombre en
+  lettres, un sigle, une abréviation ou un symbole (on ignore comment le lecteur les a prononcés) ;
+- met de côté **300 énoncés de voix jamais entraînées** dans `general_test.json`, pour vérifier
+  l'absence de régression (étape 5) ;
+- garde au plus 50 énoncés par voix, en alternant les voix, et des durées de 1 à 20 s ;
+- écrit `train_mixte.json` (et `train_25_mixte.json`, `train_50_mixte.json`) : la radiologie + 25 %
+  de français général (`--proportion` pour changer). **C'est ce fichier qu'on entraîne.**
+
+Le bilan est dans `general_resume.json`. Relancer le script reprend sans refaire l'audio déjà converti.
 
 ## 2. Mesurer le modèle de base
 
@@ -61,7 +77,7 @@ export INST=/data/radia/<instantane>
 python ~/NeMo/examples/asr/speech_to_text_finetune.py \
     --config-path=conf/asr_finetune --config-name=speech_to_text_finetune \
     init_from_pretrained_model=nvidia/parakeet-tdt-0.6b-v3 \
-    model.train_ds.manifest_filepath=$INST/train_25.json \
+    model.train_ds.manifest_filepath=$INST/train_25_mixte.json \
     model.validation_ds.manifest_filepath=$INST/val.json \
     model.tokenizer.update_tokenizer=false \
     model.train_ds.batch_size=8 model.validation_ds.batch_size=8 \
@@ -97,7 +113,8 @@ s'affiche. Erreurs fréquentes :
 | SpecAugment | celui du modèle, inchangé | Déjà adapté ; pas besoin d'y toucher |
 
 **Nombre de pas** : `max_steps = époques × énoncés de train ÷ lot effectif`. Le nombre d'énoncés est
-`resume.json → ensembles.train.enregistrements`.
+`general_resume.json → mixtes.train_mixte` (ou `resume.json → ensembles.train.enregistrements` sans
+données générales).
 
 | Énoncés de train | Lot effectif | Époques | `max_steps` | `warmup_steps` |
 | --- | --- | --- | --- | --- |
@@ -113,7 +130,7 @@ export NOM=radia_<instantane>_train_v1           # voir « Nommer un modèle »
 python ~/NeMo/examples/asr/speech_to_text_finetune.py \
     --config-path=conf/asr_finetune --config-name=speech_to_text_finetune \
     init_from_pretrained_model=nvidia/parakeet-tdt-0.6b-v3 \
-    model.train_ds.manifest_filepath=$INST/train.json \
+    model.train_ds.manifest_filepath=$INST/train_mixte.json \
     model.validation_ds.manifest_filepath=$INST/val.json \
     model.train_ds.max_duration=20 \
     model.tokenizer.update_tokenizer=false \
@@ -142,8 +159,9 @@ Le meilleur modèle (le plus faible `val_wer`) est enregistré en `.nemo` dans
 
 ### Courbe d'apprentissage
 
-Entraînez avec exactement les mêmes réglages sur `train_25.json`, `train_50.json` et `train.json`, en
-adaptant `max_steps` au nombre d'énoncés. Évaluez les trois modèles. Si le WER baisse encore nettement
+Entraînez avec exactement les mêmes réglages sur `train_25_mixte.json`, `train_50_mixte.json` et
+`train_mixte.json`, en adaptant `max_steps` au nombre d'énoncés (voir `general_resume.json`).
+Sans données générales, utilisez `train_25.json`, `train_50.json` et `train.json`. Évaluez les trois modèles. Si le WER baisse encore nettement
 entre `train_50` et `train`, la collecte vaut la peine d'être poursuivie. S'il ne baisse plus, mieux
 vaut cibler d'autres termes ou d'autres voix que d'ajouter des heures.
 
@@ -164,7 +182,7 @@ Tous doivent être remplis.
 | Aucune hausse des erreurs de négation, de latéralité ou de nombres, sur aucun jeu | Lignes « Négation fausse », « Latéralité fausse », « Nombres faux » |
 | Rappel des commandes de 95 % ou plus | Ligne « Commandes : rappel » |
 | Rappel des termes rares et des paires dangereuses en hausse | Lignes « Termes » |
-| Pas de régression sur le français général (si mis de côté à l'étape 1) | WER de ces 300 énoncés : modèle de base contre modèle ré-entraîné |
+| Pas de régression sur le français général : l'écart de WER ne doit pas être positif au-delà de son intervalle | `evaluer.py $INST --ensembles general_test --modele <base> --modele <nouveau.nemo>` |
 | Erreurs critiques écoutées par un radiologue | Champ `critiques` du rapport JSON |
 
 `test_voix_nouvelles` est le meilleur prédicteur pour un radiologue qui n'a jamais participé.
@@ -194,7 +212,7 @@ dans le dépôt, sans aucune donnée) :
 | Modèle | `radia_2026-11-05_101500_train_v1` |
 | Date, auteur | 2026-11-20, coordinateur |
 | Instantané, fraction | `2026-11-05_101500`, `train` |
-| Données | 18,4 h, 14 voix, 13 200 énoncés ; + 5 h de français général |
+| Données | 18,4 h, 14 voix, 13 200 énoncés ; + 6,1 h de Common Voice (proportion 0,25) |
 | NeMo, GPU | `nemo_toolkit` 2.x.y, 1 × L4 |
 | Réglages | lr 3e-5, 2 800 pas, lot 8 × 4, bf16 |
 | Meilleur `val_wer` | 6,1 % au pas 2 200 |
