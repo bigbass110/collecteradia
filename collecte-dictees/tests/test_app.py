@@ -155,12 +155,16 @@ def test_import_appariement_manuel_et_modalite_par_dictee(tmp_path, monkeypatch)
     at = _connecter(projet)
     assert not at.exception
     assert "Associer les dictées restantes" in [s.value for s in at.subheader]
+    # Avant l'association : le bouton est visible mais grisé, et la raison est écrite.
+    bouton = next(b for b in at.button if b.label.startswith("Importer"))
+    assert bouton.label == "Importer 1 dictée(s)" and not bouton.disabled
+    assert any("1 audio(s) sans compte rendu" in c.value for c in at.caption)
     at.selectbox(key="import_0_assoc_DICT_17.wav").set_value("CR scanner.rtf").run(timeout=60)
     assert any("Pas d'adénopathie axillaire." in t.value for t in at.text)
     assert any("ligne(s) d'en-tête ignorée(s)" in c.value and "DIOP" in c.value for c in at.caption)
     at.selectbox(key="import_0_mod_1").set_value("Thorax").run(timeout=60)
     assert any("**2** dictée(s) prête(s)" in m.value for m in at.markdown)
-    next(b for b in at.button if b.label == "Importer").click().run(timeout=60)
+    next(b for b in at.button if b.label == "Importer 2 dictée(s)").click().run(timeout=60)
     assert not at.exception
     assert any("2 dictée(s) importée(s) sur 2" in s.value for s in at.success)
     index = json.loads((projet / "donnees" / "historique" / "index" / "dr01.json").read_text())
@@ -197,3 +201,30 @@ def test_corriger_puis_supprimer_une_dictee_importee(tmp_path, monkeypatch):
     assert not at.exception
     assert I.index_de(s, "dr01") == [] and s.lire(f"historique/audio/{ident}.wav") is None
     assert json.loads((projet / "donnees" / "historique" / "index" / "dr01.json").read_text()) == []
+
+
+def test_bouton_importer_toujours_visible_avec_la_raison(tmp_path, monkeypatch):
+    """Noms différents, rien d'associé : le bouton est grisé et la page dit pourquoi."""
+    from types import SimpleNamespace
+
+    import numpy as np
+    import streamlit as st
+
+    from collecte import audio as A
+    projet = _projet_temporaire(tmp_path, monkeypatch)
+    wav = A.en_wav((0.05 * np.sin(np.linspace(0, 900, A.FREQ * 6))).astype("float32"))
+    deposes = [SimpleNamespace(name="DICT_17.wav", getvalue=lambda: wav),
+               SimpleNamespace(name="CR Diop.txt", getvalue=lambda: b"Pas d'adenopathie.")]
+    vrai = st.file_uploader
+    monkeypatch.setattr(st, "file_uploader",
+                        lambda label, **kw: deposes if str(kw.get("key", "")).startswith("import_") else vrai(label, **kw))
+    at = _connecter(projet)
+    bouton = next(b for b in at.button if b.label.startswith("Importer"))
+    assert bouton.label == "Importer 0 dictée(s)" and bouton.disabled
+    assert any("1 audio(s) sans compte rendu" in c.value for c in at.caption)
+    at.selectbox(key="import_0_assoc_DICT_17.wav").set_value("Coller le texte du compte rendu").run(timeout=60)
+    assert next(b for b in at.button if b.label.startswith("Importer")).disabled
+    assert any("texte du compte rendu à coller" in c.value for c in at.caption)
+    at.text_area(key="import_0_colle_0").input("Pas d'adénopathie axillaire.").run(timeout=60)
+    bouton = next(b for b in at.button if b.label.startswith("Importer"))
+    assert bouton.label == "Importer 1 dictée(s)" and not bouton.disabled

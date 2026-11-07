@@ -456,40 +456,50 @@ def page_importer(ident: dict) -> None:
     corriger_dictee(code, index, modalites)
 
 
+A_ASSOCIER, COLLER, ECARTER = "À associer…", "Coller le texte du compte rendu", "Ne pas importer"
+
+
 def importer_fichiers(code: str, par: str, fichiers: list, modalites: list, modalite: str, cle: str) -> None:
     fichiers, problemes_zip = I.deballer(fichiers)
     paires, audios_seuls, textes_seuls, problemes = I.apparier_detail(fichiers)
     for pb in problemes_zip + problemes:
         st.warning(pb)
     dictees = [{"audio": a, "cr": t} for a, t in paires]
+    attente = []          # pourquoi des dictées ne sont pas prêtes : affiché au-dessus du bouton
     bloque = False
 
     if audios_seuls:
         st.subheader("Associer les dictées restantes")
-        st.caption("Ces audios n'ont pas de compte rendu du même nom : choisissez le bon fichier, ou collez "
-                   "le texte du compte rendu.")
+        st.caption("Ces audios n'ont pas de compte rendu du même nom : choisissez le bon fichier, collez le "
+                   "texte du compte rendu, ou écartez l'audio.")
         noms_cr = [t.name for t in textes_seuls]
-        pris = {}
+        pris, a_associer = {}, 0
         for a in audios_seuls:
-            choix = st.selectbox(a.name, ["Ne pas importer", "Coller le texte du compte rendu"] + noms_cr,
-                                 key=f"{cle}_assoc_{a.name}")
-            if choix == "Coller le texte du compte rendu":
+            choix = st.selectbox(a.name, [A_ASSOCIER] + noms_cr + [COLLER, ECARTER], key=f"{cle}_assoc_{a.name}")
+            if choix == A_ASSOCIER:
+                a_associer += 1
+            elif choix == COLLER:
                 dictees.append({"audio": a, "cr": None})
-            elif choix != "Ne pas importer":
+            elif choix != ECARTER:
                 pris[choix] = pris.get(choix, 0) + 1
                 dictees.append({"audio": a, "cr": next(t for t in textes_seuls if t.name == choix)})
+        if a_associer:
+            attente.append(f"{a_associer} audio(s) sans compte rendu : choisissez-le dans « Associer les dictées "
+                           "restantes »")
         if doublons := [n for n, k in pris.items() if k > 1]:
             st.error("Un même compte rendu est associé à plusieurs dictées : " + ", ".join(doublons))
+            attente.append("un compte rendu est associé à plusieurs dictées")
             bloque = True
         if inutilises := [n for n in noms_cr if n not in pris]:
             st.caption("Comptes rendus non utilisés : " + ", ".join(inutilises))
     elif textes_seuls:
         st.caption("Comptes rendus sans audio, ignorés : " + ", ".join(t.name for t in textes_seuls))
-    if not dictees:
-        return
+    if not paires and not audios_seuls:
+        attente.append("aucun fichier audio déposé")
 
-    st.subheader("Vérifier avant d'importer")
     prets = []
+    if dictees:
+        st.subheader("Vérifier avant d'importer")
     for k, d in enumerate(dictees):
         a = d["audio"]
         titre = f"{a.name}  +  {d['cr'].name if d['cr'] else 'texte collé'}"
@@ -503,9 +513,14 @@ def importer_fichiers(code: str, par: str, fichiers: list, modalites: list, moda
                 texte, erreur = texte_de_fichier(d["cr"].name, d["cr"].getvalue())
             if erreur:
                 st.error(f"Compte rendu illisible : {erreur}")
+                attente.append(f"{a.name} : compte rendu illisible")
             elif not texte.strip():
-                st.warning("Compte rendu vide (PDF scanné, ou texte pas encore collé) : cette dictée ne sera "
-                           "pas importée.")
+                if d["cr"] is None:
+                    st.info("Collez le texte du compte rendu ci-dessus, puis cliquez ailleurs pour le valider.")
+                    attente.append(f"{a.name} : texte du compte rendu à coller")
+                else:
+                    st.warning("Compte rendu vide (PDF scanné ?) : il faut un fichier contenant du texte.")
+                    attente.append(f"{a.name} : compte rendu vide")
             else:
                 gardees, retirees = I.apercu_compte_rendu(texte)
                 if retirees:
@@ -514,10 +529,15 @@ def importer_fichiers(code: str, par: str, fichiers: list, modalites: list, moda
                 st.text("\n".join(gardees)[:3000])
                 prets.append((a, texte, _modalite_saisie(mod)))
 
-    st.write(f"**{len(prets)}** dictée(s) prête(s) à importer sur {len(dictees)}.")
     if len(prets) > I.MAX_LOT:
-        st.error(f"Au plus {I.MAX_LOT} dictées par envoi : retirez des fichiers et importez en plusieurs fois.")
-    elif prets and not bloque and st.button("Importer", type="primary"):
+        attente.append(f"au plus {I.MAX_LOT} dictées par envoi : importez en plusieurs fois")
+        bloque = True
+    st.divider()
+    st.write(f"**{len(prets)}** dictée(s) prête(s) à importer.")
+    for raison in attente:
+        st.caption(f"• {raison}")
+    if st.button(f"Importer {len(prets)} dictée(s)", type="primary", disabled=not prets or bloque,
+                 key=f"{cle}_importer"):
         barre, bilan = st.progress(0.0, text="Import en cours…"), []
         for k, (fa, texte, mod) in enumerate(prets):
             try:
